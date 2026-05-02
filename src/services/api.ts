@@ -32,13 +32,10 @@ export async function loginEmployee(
   return res.json();
 }
 
-export async function checkinAppointment(
-  id: string,
-  token: string
-): Promise<CheckinResult> {
+export async function checkinAppointment(id: string): Promise<CheckinResult> {
   const res = await fetch(`${API_URL}/visitor-appointments/${id}/checkin`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { "Content-Type": "application/json" },
   });
   return res.json();
 }

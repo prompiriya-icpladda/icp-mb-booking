@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useAuth } from "../context/AuthContext";
 import { checkinAppointment, CheckinResult } from "../services/api";
 
 type ScanState = "scanning" | "loading" | "result";
@@ -22,7 +21,6 @@ interface ResultDisplay {
 }
 
 export default function ScannerScreen() {
-  const { token, user, logout } = useAuth();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanState, setScanState] = useState<ScanState>("scanning");
   const [result, setResult] = useState<ResultDisplay | null>(null);
@@ -43,7 +41,7 @@ export default function ScannerScreen() {
     processingRef.current = true;
     setScanState("loading");
     try {
-      const res = await checkinAppointment(id, token!);
+      const res = await checkinAppointment(id);
       if (res.success) {
         setResult({
           icon: res.alreadyCheckedIn ? "⚠️" : "✅",
@@ -96,12 +94,7 @@ export default function ScannerScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>สแกน QR นัดหมาย</Text>
-        <View style={styles.headerRight}>
-          <Text style={styles.userName}>{user?.name}</Text>
-          <TouchableOpacity onPress={logout}>
-            <Text style={styles.logout}>ออก</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.headerSub}>จุดรักษาความปลอดภัย</Text>
       </View>
 
       {/* Camera */}
@@ -171,18 +164,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#111827" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: "column",
     paddingHorizontal: 16,
     paddingTop: 56,
     paddingBottom: 12,
     backgroundColor: "#1f2937",
   },
   headerTitle: { color: "#fff", fontSize: 17, fontWeight: "700" },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
-  userName: { color: "#9ca3af", fontSize: 13 },
-  logout: { color: "#f87171", fontSize: 13, fontWeight: "600" },
+  headerSub: { color: "#9ca3af", fontSize: 12, marginTop: 3 },
   cameraContainer: { flex: 1, position: "relative" },
   overlay: {
     ...StyleSheet.absoluteFillObject,
