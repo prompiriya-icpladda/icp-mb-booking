@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -8,18 +8,24 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { getTodayAppointments, TodayAppointment } from "../services/api";
+import { TodayAppointment } from "../services/api";
+import { checkAndNotify } from "../utils/notificationService";
+
+const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 นาที
 
 export default function NotificationScreen() {
   const [appointments, setAppointments] = useState<TodayAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchAppointments = useCallback(async () => {
     try {
-      const data = await getTodayAppointments();
+      const data = await checkAndNotify();
       setAppointments(data);
+      setLastUpdated(new Date());
       setError(null);
     } catch {
       setError("ไม่สามารถโหลดข้อมูลได้");
@@ -29,6 +35,11 @@ export default function NotificationScreen() {
   useEffect(() => {
     setLoading(true);
     fetchAppointments().finally(() => setLoading(false));
+
+    intervalRef.current = setInterval(fetchAppointments, REFRESH_INTERVAL_MS);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, [fetchAppointments]);
 
   const onRefresh = useCallback(async () => {
@@ -49,11 +60,18 @@ export default function NotificationScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>นัดหมายวันนี้</Text>
         <Text style={styles.headerDate}>{today}</Text>
-        {!loading && (
-          <View style={styles.countBadge}>
-            <Text style={styles.countText}>{appointments.length} รายการ</Text>
-          </View>
-        )}
+        <View style={styles.headerRow}>
+          {!loading && (
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>{appointments.length} รายการ</Text>
+            </View>
+          )}
+          {lastUpdated && (
+            <Text style={styles.lastUpdated}>
+              อัปเดต {lastUpdated.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
+            </Text>
+          )}
+        </View>
       </View>
 
       {loading ? (
@@ -140,6 +158,13 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: "#fff", fontSize: 18, fontWeight: "700" },
   headerDate: { color: "#9ca3af", fontSize: 12, marginTop: 2 },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 10,
+  },
+  lastUpdated: { color: "#6b7280", fontSize: 11 },
   countBadge: {
     alignSelf: "flex-start",
     backgroundColor: "#16a34a",

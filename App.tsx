@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import NotificationScreen from "./src/screens/NotificationScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
+import { registerBackgroundTask, requestPermissions } from "./src/utils/notificationService";
 
 type Tab = "notification" | "scanner";
 
@@ -47,6 +48,11 @@ function MainApp() {
 }
 
 export default function App() {
+  useEffect(() => {
+    requestPermissions();
+    registerBackgroundTask();
+  }, []);
+
   return (
     <>
       <StatusBar style="light" />
