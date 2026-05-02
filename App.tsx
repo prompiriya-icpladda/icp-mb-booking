@@ -36,13 +36,31 @@ function TabBar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void 
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState<Tab>("notification");
+  const [fromNotification, setFromNotification] = useState(false);
+
+  function handleScanRequest() {
+    setFromNotification(true);
+    setActiveTab("scanner");
+  }
+
+  function handleBackToNotification() {
+    setFromNotification(false);
+    setActiveTab("notification");
+  }
+
+  function handleTabSelect(t: Tab) {
+    setFromNotification(false);
+    setActiveTab(t);
+  }
 
   return (
     <View style={styles.root}>
       <View style={styles.screen}>
-        {activeTab === "notification" ? <NotificationScreen /> : <ScannerScreen />}
+        {activeTab === "notification"
+          ? <NotificationScreen onScanRequest={handleScanRequest} />
+          : <ScannerScreen onBack={fromNotification ? handleBackToNotification : undefined} />}
       </View>
-      <TabBar active={activeTab} onSelect={setActiveTab} />
+      <TabBar active={activeTab} onSelect={handleTabSelect} />
     </View>
   );
 }

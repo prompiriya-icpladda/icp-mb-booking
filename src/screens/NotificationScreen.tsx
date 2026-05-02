@@ -13,7 +13,7 @@ import { checkAndNotify } from "../utils/notificationService";
 
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 นาที
 
-export default function NotificationScreen() {
+export default function NotificationScreen({ onScanRequest }: { onScanRequest?: () => void }) {
   const [appointments, setAppointments] = useState<TodayAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -106,17 +106,21 @@ export default function NotificationScreen() {
               <Text style={styles.emptyText}>ไม่มีนัดหมายวันนี้</Text>
             </View>
           }
-          renderItem={({ item }) => <AppointmentCard item={item} />}
+          renderItem={({ item }) => <AppointmentCard item={item} onScanRequest={onScanRequest} />}
         />
       )}
     </View>
   );
 }
 
-function AppointmentCard({ item }: { item: TodayAppointment }) {
+function AppointmentCard({ item, onScanRequest }: { item: TodayAppointment; onScanRequest?: () => void }) {
   const checkedIn = !!item.checkedInAt;
+  const Wrapper = (!checkedIn && onScanRequest) ? TouchableOpacity : View;
   return (
-    <View style={styles.card}>
+    <Wrapper
+      style={styles.card}
+      {...(!checkedIn && onScanRequest ? { onPress: onScanRequest, activeOpacity: 0.75 } : {})}
+    >
       <View style={styles.cardHeader}>
         <View style={styles.cardLeft}>
           <Text style={styles.visitorName}>{item.visitorName}</Text>
@@ -134,8 +138,15 @@ function AppointmentCard({ item }: { item: TodayAppointment }) {
         {item.visitorCount > 1 && <Pill icon="👥" text={`${item.visitorCount} คน`} />}
         {item.hasVehicle && item.licensePlate ? <Pill icon="🚗" text={item.licensePlate} /> : null}
       </View>
-      <Text style={styles.createdBy}>มาพบ: {item.createdByName}</Text>
-    </View>
+      <View style={styles.cardFooter}>
+        <Text style={styles.createdBy}>มาพบ: {item.createdByName}</Text>
+        {!checkedIn && onScanRequest && (
+          <View style={styles.scanHint}>
+            <Text style={styles.scanHintText}>📷 แตะเพื่อสแกน</Text>
+          </View>
+        )}
+      </View>
+    </Wrapper>
   );
 }
 
@@ -225,4 +236,14 @@ const styles = StyleSheet.create({
   pillIcon: { fontSize: 11 },
   pillText: { fontSize: 12, color: "#374151" },
   createdBy: { fontSize: 11, color: "#9ca3af" },
+  cardFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 },
+  scanHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f0fdf4",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  scanHintText: { fontSize: 11, color: "#16a34a", fontWeight: "600" },
 });

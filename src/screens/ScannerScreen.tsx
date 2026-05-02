@@ -20,7 +20,7 @@ interface ResultDisplay {
   errorMsg?: string;
 }
 
-export default function ScannerScreen() {
+export default function ScannerScreen({ onBack }: { onBack?: () => void }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanState, setScanState] = useState<ScanState>("scanning");
   const [result, setResult] = useState<ResultDisplay | null>(null);
@@ -141,9 +141,15 @@ export default function ScannerScreen() {
             {result?.errorMsg && (
               <Text style={styles.errorMsg}>{result.errorMsg}</Text>
             )}
-            <TouchableOpacity style={styles.btn} onPress={resetScan}>
-              <Text style={styles.btnText}>สแกนต่อ</Text>
-            </TouchableOpacity>
+            {onBack ? (
+              <TouchableOpacity style={styles.btn} onPress={onBack}>
+                <Text style={styles.btnText}>กลับไปหน้าแจ้งเตือน</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.btn} onPress={resetScan}>
+                <Text style={styles.btnText}>สแกนต่อ</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Modal>

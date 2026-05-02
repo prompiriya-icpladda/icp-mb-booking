@@ -21,12 +21,14 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.icpladda.hrscanapp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-dev-client",
       "expo-secure-store",
       "expo-router",
       [
