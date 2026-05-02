@@ -39,3 +39,23 @@ export async function checkinAppointment(id: string): Promise<CheckinResult> {
   });
   return res.json();
 }
+
+export interface TodayAppointment {
+  _id: string;
+  visitorName: string;
+  visitorOrganization: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  purpose: string;
+  hasVehicle: boolean;
+  licensePlate: string;
+  checkedInAt: string | null;
+  visitorCount: number;
+  createdByName: string;
+}
+
+export async function getTodayAppointments(): Promise<TodayAppointment[]> {
+  const res = await fetch(`${API_URL}/visitor-appointments/today`);
+  if (!res.ok) throw new Error("fetch failed");
+  return res.json();
+}
