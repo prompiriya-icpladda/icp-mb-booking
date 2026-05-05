@@ -1,12 +1,11 @@
 {
   "expo": {
-    "name": "hr-scan-app",
-    "slug": "hr-scan-app",
+    "name": "AP Scanner",
+    "slug": "ap-scanner",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icpladda-logo.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -20,9 +19,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.icpladda.hrscanapp"
+      "package": "com.icpladda.apscanner"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -34,7 +32,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./assets/icpladda-logo.png",
           "color": "#16a34a",
           "sounds": []
         }
