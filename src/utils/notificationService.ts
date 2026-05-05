@@ -36,6 +36,17 @@ export async function requestPermissions(): Promise<boolean> {
   return status === "granted";
 }
 
+export async function notifyNow(title: string, body: string) {
+  await Notifications.scheduleNotificationAsync({
+    content: { title, body, sound: "default" },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 1,
+      channelId: CHANNEL_ID,
+    },
+  });
+}
+
 async function getSeenIds(): Promise<Set<string>> {
   try {
     const raw = await SecureStore.getItemAsync(SEEN_KEY);
