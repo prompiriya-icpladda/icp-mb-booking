@@ -94,9 +94,18 @@ export default function KioskGuard({
     hideNavBar();
   }
 
+  function handleExitPress() {
+    setModalVisible(true);
+    setPassword("");
+    setError("");
+  }
+
   return (
     <>
       {children}
+      <TouchableOpacity style={styles.exitBtn} onPress={handleExitPress} activeOpacity={0.7}>
+        <Text style={styles.exitText}>✕ ปิดแอป</Text>
+      </TouchableOpacity>
       <Modal
         visible={modalVisible}
         transparent
@@ -201,6 +210,21 @@ const styles = StyleSheet.create({
   cancelText: {
     color: "#d1d5db",
     fontSize: 15,
+  },
+  exitBtn: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    backgroundColor: "rgba(31,41,55,0.85)",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    zIndex: 100,
+  },
+  exitText: {
+    color: "#d1d5db",
+    fontSize: 13,
+    fontWeight: "600",
   },
   confirmBtn: {
     flex: 1,
