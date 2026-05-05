@@ -1,15 +1,16 @@
-import * as BackgroundFetch from "expo-background-fetch";
+import * as BackgroundTask from "expo-background-fetch";
 import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import * as TaskManager from "expo-task-manager";
+import { Platform } from "react-native";
 import { getTodayAppointments, TodayAppointment } from "../services/api";
 
 export const BACKGROUND_TASK = "check-today-appointments";
 const SEEN_KEY = "notified_appointment_ids";
+const CHANNEL_ID = "appointments";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
     shouldShowBanner: true,
@@ -17,7 +18,20 @@ Notifications.setNotificationHandler({
   }),
 });
 
+async function setupAndroidChannel() {
+  if (Platform.OS !== "android") return;
+  await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
+    name: "นัดหมาย",
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: "default",
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: "#16a34a",
+    enableVibrate: true,
+  });
+}
+
 export async function requestPermissions(): Promise<boolean> {
+  await setupAndroidChannel();
   const { status } = await Notifications.requestPermissionsAsync();
   return status === "granted";
 }
@@ -51,18 +65,18 @@ export async function checkAndNotify(): Promise<TodayAppointment[]> {
       content: {
         title: "🔔 นัดหมายใหม่วันนี้",
         body: `${a.visitorName} (${a.visitorOrganization}) เวลา ${a.appointmentTime}`,
-        sound: true,
+        sound: "default",
       },
-      trigger: null,
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1, channelId: CHANNEL_ID },
     });
   } else if (newOnes.length > 1) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: "🔔 นัดหมายใหม่วันนี้",
         body: `มีนัดหมายใหม่ ${newOnes.length} รายการ`,
-        sound: true,
+        sound: "default",
       },
-      trigger: null,
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1, channelId: CHANNEL_ID },
     });
   }
 
@@ -78,25 +92,24 @@ export async function checkAndNotify(): Promise<TodayAppointment[]> {
 TaskManager.defineTask(BACKGROUND_TASK, async () => {
   try {
     await checkAndNotify();
-    return BackgroundFetch.BackgroundFetchResult.NewData;
+    return BackgroundTask.BackgroundFetchResult.NewData;
   } catch {
-    return BackgroundFetch.BackgroundFetchResult.Failed;
+    return BackgroundTask.BackgroundFetchResult.Failed;
   }
 });
 
 export async function registerBackgroundTask() {
   try {
-    const status = await BackgroundFetch.getStatusAsync();
+    const status = await BackgroundTask.getStatusAsync();
     if (
-      status === BackgroundFetch.BackgroundFetchStatus.Restricted ||
-      status === BackgroundFetch.BackgroundFetchStatus.Denied
-    ) {
-      return;
-    }
+      status === BackgroundTask.BackgroundFetchStatus.Restricted ||
+      status === BackgroundTask.BackgroundFetchStatus.Denied
+    ) return;
+
     const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_TASK);
     if (!isRegistered) {
-      await BackgroundFetch.registerTaskAsync(BACKGROUND_TASK, {
-        minimumInterval: 10 * 60, // 10 minutes
+      await BackgroundTask.registerTaskAsync(BACKGROUND_TASK, {
+        minimumInterval: 10 * 60,
         stopOnTerminate: false,
         startOnBoot: true,
       });

@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { TodayAppointment } from "../services/api";
 import { checkAndNotify } from "../utils/notificationService";
+import { useAppointmentStream } from "../utils/useAppointmentStream";
 
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 นาที
 
@@ -41,6 +42,9 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [fetchAppointments]);
+
+  // รับแจ้งเตือนทันทีเมื่อมีนัดหมายใหม่จาก server (SSE)
+  useAppointmentStream(fetchAppointments);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

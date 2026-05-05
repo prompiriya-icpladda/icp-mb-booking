@@ -2,6 +2,7 @@ import { useKeepAwake } from "expo-keep-awake";
 import * as NavigationBar from "expo-navigation-bar";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useRef, useState } from "react";
+import { kioskModule } from "@/src/utils/kioskModule";
 import {
   AppState,
   BackHandler,
@@ -30,7 +31,6 @@ async function hideNavBar() {
   if (Platform.OS !== "android") return;
   try {
     await NavigationBar.setVisibilityAsync("hidden");
-    await NavigationBar.setBehaviorAsync("overlay-swipe");
   } catch {}
 }
 
@@ -47,9 +47,13 @@ export default function KioskGuard({
 
   useEffect(() => {
     hideNavBar();
+    kioskModule.startKiosk().catch(() => {});
 
     const appStateSub = AppState.addEventListener("change", (state) => {
-      if (state === "active") hideNavBar();
+      if (state === "active") {
+        hideNavBar();
+        kioskModule.startKiosk().catch(() => {});
+      }
     });
 
     const backSub = BackHandler.addEventListener("hardwareBackPress", () => {
