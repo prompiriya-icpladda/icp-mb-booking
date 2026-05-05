@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import NotificationScreen from "./src/screens/NotificationScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
 import { registerBackgroundTask, requestPermissions } from "./src/utils/notificationService";
+import KioskGuard from "./src/components/KioskGuard";
 
 type Tab = "notification" | "scanner";
 
@@ -72,10 +73,10 @@ export default function App() {
   }, []);
 
   return (
-    <>
-      <StatusBar style="light" />
+    <KioskGuard>
+      <StatusBar style="light" hidden />
       <MainApp />
-    </>
+    </KioskGuard>
   );
 }
 
