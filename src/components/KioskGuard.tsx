@@ -80,6 +80,9 @@ export default function KioskGuard({
     const adminPwd = await getAdminPassword();
     if (password === adminPwd) {
       setModalVisible(false);
+      try {
+        await kioskModule.stopKiosk();
+      } catch {}
       BackHandler.exitApp();
     } else {
       setError("รหัสผ่านไม่ถูกต้อง");
