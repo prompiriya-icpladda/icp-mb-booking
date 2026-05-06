@@ -7,43 +7,71 @@ import { getTodayAppointments, TodayAppointment } from "../services/api";
 
 export const BACKGROUND_TASK = "check-today-appointments";
 const SEEN_KEY = "notified_appointment_ids";
-const CHANNEL_ID = "appointments";
+const CHANNEL_ID = "appointments-v3";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    shouldSetBadge: true,
     shouldShowBanner: true,
     shouldShowList: true,
+    shouldVibrate: true,
   }),
 });
 
 async function setupAndroidChannel() {
   if (Platform.OS !== "android") return;
+  // Delete old channel so Android picks up new sound settings
+  await Notifications.deleteNotificationChannelAsync("appointments").catch(
+    () => {},
+  );
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
     name: "นัดหมาย",
-    importance: Notifications.AndroidImportance.HIGH,
+    importance: Notifications.AndroidImportance.MAX,
     sound: "default",
-    vibrationPattern: [0, 250, 250, 250],
+    vibrationPattern: [0, 250, 250, 250, 250, 250],
     lightColor: "#16a34a",
     enableVibrate: true,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
   });
+}
+
+async function setupIOSNotifications() {
+  if (Platform.OS !== "ios") return;
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status !== "granted") {
+    const result = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+        allowCriticalAlerts: true,
+        allowProvisional: true,
+      },
+    });
+    return result.status === "granted";
+  }
+  return true;
 }
 
 export async function requestPermissions(): Promise<boolean> {
   await setupAndroidChannel();
+  await setupIOSNotifications();
   const { status } = await Notifications.requestPermissionsAsync();
   return status === "granted";
 }
 
 export async function notifyNow(title: string, body: string) {
+  console.log("notifyNow:", { title, body });
   await Notifications.scheduleNotificationAsync({
-    content: { title, body, sound: "default" },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: 1,
-      channelId: CHANNEL_ID,
+    content: {
+      title,
+      body,
+      sound: "default",
+      badge: 1,
+      ...(Platform.OS === "android" && { channelId: CHANNEL_ID }),
     },
+    trigger: null,
   });
 }
 
@@ -62,10 +90,14 @@ async function getSeenIds(): Promise<Set<string>> {
 
 async function saveSeenIds(ids: Set<string>) {
   const today = new Date().toISOString().split("T")[0];
-  await SecureStore.setItemAsync(SEEN_KEY, JSON.stringify({ date: today, ids: [...ids] }));
+  await SecureStore.setItemAsync(
+    SEEN_KEY,
+    JSON.stringify({ date: today, ids: [...ids] }),
+  );
 }
 
 export async function checkAndNotify(): Promise<TodayAppointment[]> {
+  if (Platform.OS === "android") await setupAndroidChannel();
   const appointments = await getTodayAppointments();
   const seenIds = await getSeenIds();
   const newOnes = appointments.filter((a) => !seenIds.has(a._id));
@@ -77,8 +109,10 @@ export async function checkAndNotify(): Promise<TodayAppointment[]> {
         title: "🔔 นัดหมายใหม่วันนี้",
         body: `${a.visitorName} (${a.visitorOrganization}) เวลา ${a.appointmentTime}`,
         sound: "default",
+        badge: 1,
+        ...(Platform.OS === "android" && { channelId: CHANNEL_ID }),
       },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1, channelId: CHANNEL_ID },
+      trigger: null,
     });
   } else if (newOnes.length > 1) {
     await Notifications.scheduleNotificationAsync({
@@ -86,8 +120,10 @@ export async function checkAndNotify(): Promise<TodayAppointment[]> {
         title: "🔔 นัดหมายใหม่วันนี้",
         body: `มีนัดหมายใหม่ ${newOnes.length} รายการ`,
         sound: "default",
+        badge: newOnes.length,
+        ...(Platform.OS === "android" && { channelId: CHANNEL_ID }),
       },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1, channelId: CHANNEL_ID },
+      trigger: null,
     });
   }
 
@@ -109,22 +145,47 @@ TaskManager.defineTask(BACKGROUND_TASK, async () => {
   }
 });
 
+// Start foreground polling (ทำงานเมื่อแอปเปิด)
+let foregroundPollingInterval: ReturnType<typeof setInterval> | null = null;
+
+export function startForegroundPolling() {
+  if (foregroundPollingInterval) return;
+
+  // Check immediately
+  checkAndNotify().catch(() => {});
+
+  // Check every 30 seconds
+  foregroundPollingInterval = setInterval(() => {
+    checkAndNotify().catch(() => {});
+  }, 30 * 1000);
+}
+
+export function stopForegroundPolling() {
+  if (foregroundPollingInterval) {
+    clearInterval(foregroundPollingInterval);
+    foregroundPollingInterval = null;
+  }
+}
+
 export async function registerBackgroundTask() {
   try {
     const status = await BackgroundTask.getStatusAsync();
     if (
       status === BackgroundTask.BackgroundFetchStatus.Restricted ||
       status === BackgroundTask.BackgroundFetchStatus.Denied
-    ) return;
+    )
+      return;
 
-    const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_TASK);
-    if (!isRegistered) {
-      await BackgroundTask.registerTaskAsync(BACKGROUND_TASK, {
-        minimumInterval: 10 * 60,
-        stopOnTerminate: false,
-        startOnBoot: true,
-      });
+    const isRegistered =
+      await TaskManager.isTaskRegisteredAsync(BACKGROUND_TASK);
+    if (isRegistered) {
+      await BackgroundTask.unregisterTaskAsync(BACKGROUND_TASK);
     }
+    await BackgroundTask.registerTaskAsync(BACKGROUND_TASK, {
+      minimumInterval: 1 * 60, // 1 นาที (ทุกนาที)
+      stopOnTerminate: false,
+      startOnBoot: true,
+    });
   } catch (e) {
     console.log("Background task registration failed:", e);
   }
