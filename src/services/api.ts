@@ -1,5 +1,8 @@
 // ปรับ API_URL ให้ตรงกับ IP และ port ของ server จริง (ไม่ใช่ localhost เมื่อรันบนมือถือ)
 export const API_URL = "https://app-plant.icpladda.com/ICPBooking/api";
+export const HR_API_URL =
+  process.env.EXPO_PUBLIC_HR_API_URL ||
+  "https://n8n-plant.icpladda.com/webhook/api/employee";
 
 export interface LoginResult {
   token?: string;
@@ -106,22 +109,97 @@ function normalizeHrEmployee(item: RawHrEmployee): HrEmployee | null {
   };
 }
 
+function buildHrSearchRequests(keyword: string): Array<{
+  url: string;
+  init?: RequestInit;
+}> {
+  const base = HR_API_URL.replace(/\/$/, "");
+  const encoded = encodeURIComponent(keyword.trim());
+  return [
+    { url: base },
+    { url: `${base}?keyword=${encoded}` },
+    { url: `${base}?q=${encoded}` },
+    { url: `${base}?search=${encoded}` },
+    { url: `${base}?name=${encoded}` },
+    {
+      url: base,
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ keyword, q: keyword, search: keyword, name: keyword }),
+      },
+    },
+  ];
+}
+
+function normalizeHrResponse(
+  data: unknown,
+  keyword: string,
+): HrEmployee[] {
+  const items = Array.isArray(data)
+    ? data
+    : Array.isArray((data as { data?: unknown })?.data)
+      ? (data as { data: unknown[] }).data
+      : Array.isArray((data as { employees?: unknown })?.employees)
+        ? (data as { employees: unknown[] }).employees
+        : Array.isArray((data as { result?: unknown })?.result)
+          ? (data as { result: unknown[] }).result
+          : [];
+
+  const normalized = items
+    .map((item) => normalizeHrEmployee(item as RawHrEmployee))
+    .filter((item): item is HrEmployee => !!item);
+
+  if (!keyword.trim()) return normalized;
+
+  const q = keyword.trim().toLowerCase();
+  return normalized.filter((item) => {
+    const haystack = [
+      item.employeeCode,
+      item.name,
+      item.nickname ?? "",
+      item.department ?? "",
+      item.position ?? "",
+    ]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(q);
+  });
+}
+
 export async function searchHrEmployees(
   keyword: string,
 ): Promise<HrEmployee[]> {
   const query = keyword.trim();
   if (query.length < 2) return [];
 
-  const res = await fetch(
-    `${API_URL}/hr/employees?keyword=${encodeURIComponent(query)}`,
-  );
-  const data = await parseJsonResponse<
-    RawHrEmployee[] | { data?: RawHrEmployee[]; employees?: RawHrEmployee[] }
-  >(res);
-  const items = Array.isArray(data) ? data : data.data ?? data.employees ?? [];
-  return items
-    .map((item) => normalizeHrEmployee(item))
-    .filter((item): item is HrEmployee => !!item);
+  const requests = buildHrSearchRequests(query);
+  let lastError: unknown = null;
+
+  for (const request of requests) {
+    try {
+      const res = await fetch(request.url, {
+        headers: { Accept: "application/json" },
+        ...request.init,
+      });
+      if (!res.ok) {
+        lastError = new Error(`HR API returned ${res.status}`);
+        continue;
+      }
+
+      const data = await res.json().catch(() => null);
+      const normalized = normalizeHrResponse(data, query);
+      if (normalized.length > 0) {
+        return normalized;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("ไม่สามารถดึงข้อมูลจาก HR API ได้");
 }
 
 export interface CreateWalkInVisitPayload {

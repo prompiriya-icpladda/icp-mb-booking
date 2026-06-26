@@ -5,6 +5,7 @@ import NotificationScreen from "./src/screens/NotificationScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
 import WalkInScreen from "./src/screens/WalkInScreen";
 import { registerBackgroundTask, requestPermissions, startForegroundPolling, stopForegroundPolling } from "./src/utils/notificationService";
+import { startAppUpdateChecks, stopAppUpdateChecks } from "./src/utils/updateService";
 import KioskGuard from "./src/components/KioskGuard";
 
 type Tab = "notification" | "scanner" | "walkIn";
@@ -86,8 +87,12 @@ export default function App() {
     requestPermissions();
     registerBackgroundTask();
     startForegroundPolling();
+    startAppUpdateChecks();
 
-    return () => stopForegroundPolling();
+    return () => {
+      stopForegroundPolling();
+      stopAppUpdateChecks();
+    };
   }, []);
 
   return (

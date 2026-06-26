@@ -24,7 +24,7 @@ export default function ScannerScreen({ onBack }: { onBack?: () => void }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanState, setScanState] = useState<ScanState>("scanning");
   const [result, setResult] = useState<ResultDisplay | null>(null);
-  const [cameraFacing, setCameraFacing] = useState<"front" | "back">("front");
+  const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
   const processingRef = useRef(false);
 
   function extractAppointmentId(data: string): string | null {
@@ -105,17 +105,7 @@ export default function ScannerScreen({ onBack }: { onBack?: () => void }) {
           facing={cameraFacing}
           barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
           onBarcodeScanned={scanState === "scanning" ? handleBarcodeScan : undefined}
-          onMountError={() => setCameraFacing("back")}
         />
-        <TouchableOpacity
-          style={styles.switchCameraBtn}
-          onPress={() => setCameraFacing((v) => (v === "front" ? "back" : "front"))}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.switchCameraText}>
-            {cameraFacing === "front" ? "กล้องบน" : "กล้องหลัง"}
-          </Text>
-        </TouchableOpacity>
         {/* Viewfinder overlay */}
         <View style={styles.overlay}>
           <View style={styles.viewfinder} />
@@ -190,17 +180,6 @@ const styles = StyleSheet.create({
   headerTitle: { color: "#fff", fontSize: 17, fontWeight: "700" },
   headerSub: { color: "#9ca3af", fontSize: 12, marginTop: 3 },
   cameraContainer: { flex: 1, position: "relative" },
-  switchCameraBtn: {
-    position: "absolute",
-    top: 14,
-    right: 14,
-    backgroundColor: "rgba(17,24,39,0.85)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    zIndex: 5,
-  },
-  switchCameraText: { color: "#fff", fontSize: 12, fontWeight: "700" },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",

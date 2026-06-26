@@ -29,6 +29,7 @@ export default function WalkInScreen() {
   const [hostResults, setHostResults] = useState<HrEmployee[]>([]);
   const [selectedHost, setSelectedHost] = useState<HrEmployee | null>(null);
   const [hostLoading, setHostLoading] = useState(false);
+  const [hostError, setHostError] = useState<string | null>(null);
   const [hasVehicle, setHasVehicle] = useState(false);
   const [licensePlate, setLicensePlate] = useState("");
   const [licensePhotoUri, setLicensePhotoUri] = useState<string | null>(null);
@@ -36,7 +37,10 @@ export default function WalkInScreen() {
   const [cameraReady, setCameraReady] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const [message, setMessage] = useState<{
+    type: "ok" | "error";
+    text: string;
+  } | null>(null);
   const idInputRef = useRef<TextInput>(null);
   const cameraRef = useRef<CameraView>(null);
 
@@ -44,6 +48,7 @@ export default function WalkInScreen() {
     const query = hostQuery.trim();
     if (query.length < 2 || selectedHost) {
       setHostResults([]);
+      setHostError(null);
       return;
     }
 
@@ -52,10 +57,18 @@ export default function WalkInScreen() {
     const timer = setTimeout(() => {
       searchHrEmployees(query)
         .then((items) => {
+          setHostError(null);
           if (!cancelled) setHostResults(items);
         })
-        .catch(() => {
+        .catch((error) => {
           if (!cancelled) setHostResults([]);
+          if (!cancelled) {
+            setHostError(
+              error instanceof Error
+                ? error.message
+                : "ไม่สามารถดึงข้อมูลจาก HR API ได้",
+            );
+          }
         })
         .finally(() => {
           if (!cancelled) setHostLoading(false);
@@ -84,12 +97,14 @@ export default function WalkInScreen() {
     setSelectedHost(employee);
     setHostQuery(formatEmployeeName(employee));
     setHostResults([]);
+    setHostError(null);
   }
 
   function clearHost() {
     setSelectedHost(null);
     setHostQuery("");
     setHostResults([]);
+    setHostError(null);
   }
 
   function validate() {
@@ -124,7 +139,7 @@ export default function WalkInScreen() {
         source: "mobile-walk-in",
       });
       resetForm();
-      setMessage({ type: "ok", text: "บันทึกข้อมูลหน้างานเรียบร้อย" });
+      setMessage({ type: "ok", text: "บันทึกข้อมูลเรียบร้อย" });
     } catch (e) {
       setMessage({
         type: "error",
@@ -161,7 +176,10 @@ export default function WalkInScreen() {
         setMessage({ type: "error", text: "OCR ไม่พบทะเบียน กรุณากรอกเอง" });
       }
     } catch {
-      setMessage({ type: "error", text: "OCR ใช้งานไม่ได้ กรุณากรอกทะเบียนเอง" });
+      setMessage({
+        type: "error",
+        text: "OCR ใช้งานไม่ได้ กรุณากรอกทะเบียนเอง",
+      });
     } finally {
       setOcrLoading(false);
     }
@@ -173,11 +191,14 @@ export default function WalkInScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>ลงทะเบียนหน้างาน</Text>
+        <Text style={styles.headerTitle}>ลงทะเบียนบุคคลภายนอก</Text>
         <Text style={styles.headerSub}>ผู้มาติดต่อที่ไม่มีการนัดล่วงหน้า</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <Field label="ชื่อผู้ที่มา">
           <TextInput
             style={styles.input}
@@ -206,7 +227,12 @@ export default function WalkInScreen() {
               </TouchableOpacity>
             )}
           </View>
-          {hostLoading && <ActivityIndicator color="#16a34a" style={styles.inlineLoading} />}
+          {hostLoading && (
+            <ActivityIndicator color="#16a34a" style={styles.inlineLoading} />
+          )}
+          {!!hostError && !hostLoading && (
+            <Text style={styles.hostError}>{hostError}</Text>
+          )}
           {hostResults.map((item) => (
             <TouchableOpacity
               key={item.employeeCode}
@@ -214,9 +240,13 @@ export default function WalkInScreen() {
               onPress={() => pickHost(item)}
               activeOpacity={0.75}
             >
-              <Text style={styles.employeeName}>{formatEmployeeName(item)}</Text>
+              <Text style={styles.employeeName}>
+                {formatEmployeeName(item)}
+              </Text>
               <Text style={styles.employeeMeta}>
-                {[item.employeeCode, item.department, item.position].filter(Boolean).join(" | ")}
+                {[item.employeeCode, item.department, item.position]
+                  .filter(Boolean)
+                  .join(" | ")}
               </Text>
             </TouchableOpacity>
           ))}
@@ -234,7 +264,10 @@ export default function WalkInScreen() {
               keyboardType="number-pad"
               maxLength={13}
             />
-            <TouchableOpacity style={styles.clearBtn} onPress={() => idInputRef.current?.focus()}>
+            <TouchableOpacity
+              style={styles.clearBtn}
+              onPress={() => idInputRef.current?.focus()}
+            >
               <Text style={styles.clearText}>อ่านบัตร</Text>
             </TouchableOpacity>
           </View>
@@ -252,8 +285,16 @@ export default function WalkInScreen() {
 
         <Field label="มีรถไหม">
           <View style={styles.segmentRow}>
-            <SegmentButton active={hasVehicle} label="มีรถ" onPress={() => setHasVehicle(true)} />
-            <SegmentButton active={!hasVehicle} label="ไม่มีรถ" onPress={() => setHasVehicle(false)} />
+            <SegmentButton
+              active={hasVehicle}
+              label="มีรถ"
+              onPress={() => setHasVehicle(true)}
+            />
+            <SegmentButton
+              active={!hasVehicle}
+              label="ไม่มีรถ"
+              onPress={() => setHasVehicle(false)}
+            />
           </View>
         </Field>
 
@@ -268,19 +309,29 @@ export default function WalkInScreen() {
                 placeholderTextColor="#9ca3af"
                 autoCapitalize="characters"
               />
-              <TouchableOpacity style={styles.clearBtn} onPress={openPlateCamera}>
+              <TouchableOpacity
+                style={styles.clearBtn}
+                onPress={openPlateCamera}
+              >
                 <Text style={styles.clearText}>ถ่ายรูป</Text>
               </TouchableOpacity>
             </View>
-            {ocrLoading && <ActivityIndicator color="#16a34a" style={styles.inlineLoading} />}
+            {ocrLoading && (
+              <ActivityIndicator color="#16a34a" style={styles.inlineLoading} />
+            )}
             {licensePhotoUri && (
-              <Image source={{ uri: licensePhotoUri }} style={styles.platePreview} />
+              <Image
+                source={{ uri: licensePhotoUri }}
+                style={styles.platePreview}
+              />
             )}
           </Field>
         )}
 
         {message && (
-          <Text style={message.type === "ok" ? styles.okText : styles.errorText}>
+          <Text
+            style={message.type === "ok" ? styles.okText : styles.errorText}
+          >
             {message.text}
           </Text>
         )}
@@ -299,7 +350,11 @@ export default function WalkInScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      <Modal visible={cameraOpen} animationType="slide" onRequestClose={() => setCameraOpen(false)}>
+      <Modal
+        visible={cameraOpen}
+        animationType="slide"
+        onRequestClose={() => setCameraOpen(false)}
+      >
         <View style={styles.cameraModal}>
           <CameraView
             ref={cameraRef}
@@ -309,11 +364,17 @@ export default function WalkInScreen() {
           />
           <View style={styles.plateFrame} />
           <View style={styles.cameraActions}>
-            <TouchableOpacity style={styles.cameraCancel} onPress={() => setCameraOpen(false)}>
+            <TouchableOpacity
+              style={styles.cameraCancel}
+              onPress={() => setCameraOpen(false)}
+            >
               <Text style={styles.cameraCancelText}>ยกเลิก</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.cameraCapture, !cameraReady && styles.submitDisabled]}
+              style={[
+                styles.cameraCapture,
+                !cameraReady && styles.submitDisabled,
+              ]}
               onPress={takePlatePhoto}
               disabled={!cameraReady}
             >
@@ -326,7 +387,13 @@ export default function WalkInScreen() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -350,7 +417,9 @@ function SegmentButton({
       onPress={onPress}
       activeOpacity={0.8}
     >
-      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
+      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -394,6 +463,7 @@ const styles = StyleSheet.create({
   },
   clearText: { color: "#fff", fontSize: 13, fontWeight: "700" },
   inlineLoading: { alignSelf: "flex-start", marginTop: 4 },
+  hostError: { color: "#b91c1c", fontSize: 12, fontWeight: "600" },
   employeeItem: {
     backgroundColor: "#fff",
     borderWidth: 1,
@@ -422,8 +492,18 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#e5e7eb",
   },
-  okText: { color: "#15803d", fontSize: 13, fontWeight: "700", textAlign: "center" },
-  errorText: { color: "#dc2626", fontSize: 13, fontWeight: "700", textAlign: "center" },
+  okText: {
+    color: "#15803d",
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  errorText: {
+    color: "#dc2626",
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   submitBtn: {
     backgroundColor: "#16a34a",
     borderRadius: 8,
