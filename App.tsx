@@ -3,10 +3,11 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import NotificationScreen from "./src/screens/NotificationScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
+import WalkInScreen from "./src/screens/WalkInScreen";
 import { registerBackgroundTask, requestPermissions, startForegroundPolling, stopForegroundPolling } from "./src/utils/notificationService";
 import KioskGuard from "./src/components/KioskGuard";
 
-type Tab = "notification" | "scanner";
+type Tab = "notification" | "scanner" | "walkIn";
 
 function TabBar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void }) {
   return (
@@ -29,6 +30,16 @@ function TabBar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void 
         <Text style={styles.tabIcon}>📷</Text>
         <Text style={[styles.tabLabel, active === "scanner" && styles.tabLabelActive]}>
           สแกน QR
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.tab, active === "walkIn" && styles.tabActive]}
+        onPress={() => onSelect("walkIn")}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.tabIcon}>📝</Text>
+        <Text style={[styles.tabLabel, active === "walkIn" && styles.tabLabelActive]}>
+          หน้างาน
         </Text>
       </TouchableOpacity>
     </View>
@@ -57,9 +68,13 @@ function MainApp() {
   return (
     <View style={styles.root}>
       <View style={styles.screen}>
-        {activeTab === "notification"
-          ? <NotificationScreen onScanRequest={handleScanRequest} />
-          : <ScannerScreen onBack={fromNotification ? handleBackToNotification : undefined} />}
+        {activeTab === "notification" ? (
+          <NotificationScreen onScanRequest={handleScanRequest} />
+        ) : activeTab === "scanner" ? (
+          <ScannerScreen onBack={fromNotification ? handleBackToNotification : undefined} />
+        ) : (
+          <WalkInScreen />
+        )}
       </View>
       <TabBar active={activeTab} onSelect={handleTabSelect} />
     </View>
