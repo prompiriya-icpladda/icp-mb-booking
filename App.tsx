@@ -1,16 +1,30 @@
+import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { StatusBar } from "expo-status-bar";
+import KioskGuard from "./src/components/KioskGuard";
 import NotificationScreen from "./src/screens/NotificationScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
 import WalkInScreen from "./src/screens/WalkInScreen";
-import { registerBackgroundTask, requestPermissions, startForegroundPolling, stopForegroundPolling } from "./src/utils/notificationService";
-import { startAppUpdateChecks, stopAppUpdateChecks } from "./src/utils/updateService";
-import KioskGuard from "./src/components/KioskGuard";
+import {
+  registerBackgroundTask,
+  requestPermissions,
+  startForegroundPolling,
+  stopForegroundPolling,
+} from "./src/utils/notificationService";
+import {
+  startAppUpdateChecks,
+  stopAppUpdateChecks,
+} from "./src/utils/updateService";
 
 type Tab = "notification" | "scanner" | "walkIn";
 
-function TabBar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void }) {
+function TabBar({
+  active,
+  onSelect,
+}: {
+  active: Tab;
+  onSelect: (t: Tab) => void;
+}) {
   return (
     <View style={styles.tabBar}>
       <TouchableOpacity
@@ -19,7 +33,12 @@ function TabBar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void 
         activeOpacity={0.7}
       >
         <Text style={styles.tabIcon}>🔔</Text>
-        <Text style={[styles.tabLabel, active === "notification" && styles.tabLabelActive]}>
+        <Text
+          style={[
+            styles.tabLabel,
+            active === "notification" && styles.tabLabelActive,
+          ]}
+        >
           แจ้งเตือน
         </Text>
       </TouchableOpacity>
@@ -29,7 +48,12 @@ function TabBar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void 
         activeOpacity={0.7}
       >
         <Text style={styles.tabIcon}>📷</Text>
-        <Text style={[styles.tabLabel, active === "scanner" && styles.tabLabelActive]}>
+        <Text
+          style={[
+            styles.tabLabel,
+            active === "scanner" && styles.tabLabelActive,
+          ]}
+        >
           สแกน QR
         </Text>
       </TouchableOpacity>
@@ -39,8 +63,13 @@ function TabBar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void 
         activeOpacity={0.7}
       >
         <Text style={styles.tabIcon}>📝</Text>
-        <Text style={[styles.tabLabel, active === "walkIn" && styles.tabLabelActive]}>
-          หน้างาน
+        <Text
+          style={[
+            styles.tabLabel,
+            active === "walkIn" && styles.tabLabelActive,
+          ]}
+        >
+          ลงทะเบียน
         </Text>
       </TouchableOpacity>
     </View>
@@ -72,7 +101,9 @@ function MainApp() {
         {activeTab === "notification" ? (
           <NotificationScreen onScanRequest={handleScanRequest} />
         ) : activeTab === "scanner" ? (
-          <ScannerScreen onBack={fromNotification ? handleBackToNotification : undefined} />
+          <ScannerScreen
+            onBack={fromNotification ? handleBackToNotification : undefined}
+          />
         ) : (
           <WalkInScreen />
         )}

@@ -9,7 +9,7 @@ export interface LoginResult {
   user?: { name: string; role: string; employeeCode: string };
   error?: string;
 }
-
+console.log("HR_API_URL =", HR_API_URL);
 export interface CheckinResult {
   success?: boolean;
   alreadyCheckedIn?: boolean;
@@ -89,21 +89,35 @@ type RawHrEmployee = Partial<HrEmployee> & {
   code?: string;
   empCode?: string;
   employeeId?: string;
+  employee_id?: string;
+  employeeCode?: string;
   employeeName?: string;
+  employee_name?: string;
   fullName?: string;
+  full_name?: string;
   nickName?: string;
+  nick_name?: string;
 };
 
 function normalizeHrEmployee(item: RawHrEmployee): HrEmployee | null {
   const employeeCode =
-    item.employeeCode ?? item.empCode ?? item.employeeId ?? item.code;
-  const name = item.name ?? item.employeeName ?? item.fullName;
+    item.employeeCode ??
+    item.empCode ??
+    item.employeeId ??
+    item.employee_id ??
+    item.code;
+  const name =
+    item.name ??
+    item.employeeName ??
+    item.employee_name ??
+    item.fullName ??
+    item.full_name;
   if (!employeeCode || !name) return null;
 
   return {
     employeeCode,
     name,
-    nickname: item.nickname ?? item.nickName,
+    nickname: item.nickname ?? item.nickName ?? item.nick_name,
     department: item.department,
     position: item.position,
   };
@@ -125,17 +139,22 @@ function buildHrSearchRequests(keyword: string): Array<{
       url: base,
       init: {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ keyword, q: keyword, search: keyword, name: keyword }),
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          keyword,
+          q: keyword,
+          search: keyword,
+          name: keyword,
+        }),
       },
     },
   ];
 }
 
-function normalizeHrResponse(
-  data: unknown,
-  keyword: string,
-): HrEmployee[] {
+function normalizeHrResponse(data: unknown, keyword: string): HrEmployee[] {
   const items = Array.isArray(data)
     ? data
     : Array.isArray((data as { data?: unknown })?.data)
@@ -235,6 +254,10 @@ export interface LicensePlateOcrResult {
   licensePlate?: string;
 }
 
+export interface IdCardOcrResult {
+  idCardNumber?: string;
+}
+
 export async function ocrLicensePlate(
   imageUri: string,
 ): Promise<LicensePlateOcrResult> {
@@ -250,4 +273,19 @@ export async function ocrLicensePlate(
     body: form,
   });
   return parseJsonResponse<LicensePlateOcrResult>(res);
+}
+
+export async function ocrIdCard(imageUri: string): Promise<IdCardOcrResult> {
+  const form = new FormData();
+  form.append("image", {
+    uri: imageUri,
+    name: "id-card.jpg",
+    type: "image/jpeg",
+  } as any);
+
+  const res = await fetch(`${API_URL}/walk-in-visitors/id-card-ocr`, {
+    method: "POST",
+    body: form,
+  });
+  return parseJsonResponse<IdCardOcrResult>(res);
 }

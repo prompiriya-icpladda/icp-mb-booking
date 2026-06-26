@@ -16,6 +16,7 @@ import {
 import {
   createWalkInVisit,
   HrEmployee,
+  ocrIdCard,
   ocrLicensePlate,
   searchHrEmployees,
 } from "../services/api";
@@ -33,6 +34,10 @@ export default function WalkInScreen() {
   const [hasVehicle, setHasVehicle] = useState(false);
   const [licensePlate, setLicensePlate] = useState("");
   const [licensePhotoUri, setLicensePhotoUri] = useState<string | null>(null);
+  const [idCardPhotoUri, setIdCardPhotoUri] = useState<string | null>(null);
+  const [cameraMode, setCameraMode] = useState<"license" | "idCard" | null>(
+    null,
+  );
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -150,38 +155,57 @@ export default function WalkInScreen() {
     }
   }
 
-  async function openPlateCamera() {
+  async function openCamera(mode: "license" | "idCard") {
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) return;
     }
+    setCameraMode(mode);
     setCameraOpen(true);
     setCameraReady(false);
   }
 
-  async function takePlatePhoto() {
-    if (!cameraReady) return;
+  async function takePhoto() {
+    if (!cameraReady || !cameraMode) return;
     const photo = await cameraRef.current?.takePictureAsync({ quality: 0.75 });
     if (!photo?.uri) return;
 
-    setLicensePhotoUri(photo.uri);
     setCameraOpen(false);
     setOcrLoading(true);
     setMessage(null);
+
     try {
-      const result = await ocrLicensePlate(photo.uri);
-      if (result.licensePlate) {
-        setLicensePlate(result.licensePlate);
+      if (cameraMode === "license") {
+        setLicensePhotoUri(photo.uri);
+        const result = await ocrLicensePlate(photo.uri);
+        if (result.licensePlate) {
+          setLicensePlate(result.licensePlate);
+        } else {
+          setMessage({ type: "error", text: "OCR ไม่พบทะเบียน กรุณากรอกเอง" });
+        }
       } else {
-        setMessage({ type: "error", text: "OCR ไม่พบทะเบียน กรุณากรอกเอง" });
+        setIdCardPhotoUri(photo.uri);
+        const result = await ocrIdCard(photo.uri);
+        if (result.idCardNumber) {
+          setIdCardNumber(result.idCardNumber.replace(/[^0-9]/g, ""));
+        } else {
+          setMessage({
+            type: "error",
+            text: "OCR ไม่พบบัตรประชาชน กรุณากรอกเอง",
+          });
+        }
       }
     } catch {
       setMessage({
         type: "error",
-        text: "OCR ใช้งานไม่ได้ กรุณากรอกทะเบียนเอง",
+        text:
+          cameraMode === "license"
+            ? "OCR ใช้งานไม่ได้ กรุณากรอกทะเบียนเอง"
+            : "OCR ใช้งานไม่ได้ กรุณากรอกบัตรประชาชนเอง",
       });
     } finally {
       setOcrLoading(false);
+      setCameraMode(null);
     }
   }
 
@@ -259,18 +283,24 @@ export default function WalkInScreen() {
               style={[styles.input, styles.searchInput]}
               value={idCardNumber}
               onChangeText={(v) => setIdCardNumber(v.replace(/[^0-9]/g, ""))}
-              placeholder="เสียบเครื่องอ่านหรือกรอกเอง"
+              placeholder="ถ่ายรูป OCR หรือกรอกเอง"
               placeholderTextColor="#9ca3af"
               keyboardType="number-pad"
               maxLength={13}
             />
             <TouchableOpacity
               style={styles.clearBtn}
-              onPress={() => idInputRef.current?.focus()}
+              onPress={() => openCamera("idCard")}
             >
-              <Text style={styles.clearText}>อ่านบัตร</Text>
+              <Text style={styles.clearText}>ถ่ายรูป</Text>
             </TouchableOpacity>
           </View>
+          {idCardPhotoUri && (
+            <Image
+              source={{ uri: idCardPhotoUri }}
+              style={styles.idCardPreview}
+            />
+          )}
         </Field>
 
         <Field label="ชื่อบริษัท">
@@ -311,7 +341,7 @@ export default function WalkInScreen() {
               />
               <TouchableOpacity
                 style={styles.clearBtn}
-                onPress={openPlateCamera}
+                onPress={() => openCamera("license")}
               >
                 <Text style={styles.clearText}>ถ่ายรูป</Text>
               </TouchableOpacity>
@@ -353,7 +383,10 @@ export default function WalkInScreen() {
       <Modal
         visible={cameraOpen}
         animationType="slide"
-        onRequestClose={() => setCameraOpen(false)}
+        onRequestClose={() => {
+          setCameraOpen(false);
+          setCameraMode(null);
+        }}
       >
         <View style={styles.cameraModal}>
           <CameraView
@@ -362,11 +395,21 @@ export default function WalkInScreen() {
             facing="back"
             onCameraReady={() => setCameraReady(true)}
           />
-          <View style={styles.plateFrame} />
+          <View style={styles.cameraHeader}>
+            <Text style={styles.cameraHeaderText}>
+              {cameraMode === "license"
+                ? "ถ่ายรูปทะเบียนรถ"
+                : "ถ่ายรูปบัตรประชาชน"}
+            </Text>
+          </View>
+          <View style={styles.cameraFrame} />
           <View style={styles.cameraActions}>
             <TouchableOpacity
               style={styles.cameraCancel}
-              onPress={() => setCameraOpen(false)}
+              onPress={() => {
+                setCameraOpen(false);
+                setCameraMode(null);
+              }}
             >
               <Text style={styles.cameraCancelText}>ยกเลิก</Text>
             </TouchableOpacity>
@@ -375,7 +418,7 @@ export default function WalkInScreen() {
                 styles.cameraCapture,
                 !cameraReady && styles.submitDisabled,
               ]}
-              onPress={takePlatePhoto}
+              onPress={takePhoto}
               disabled={!cameraReady}
             >
               <Text style={styles.cameraCaptureText}>ถ่าย</Text>
@@ -486,6 +529,13 @@ const styles = StyleSheet.create({
   segmentActive: { backgroundColor: "#dcfce7", borderColor: "#16a34a" },
   segmentText: { color: "#6b7280", fontSize: 14, fontWeight: "700" },
   segmentTextActive: { color: "#166534" },
+  idCardPreview: {
+    width: "100%",
+    height: 160,
+    borderRadius: 8,
+    backgroundColor: "#e5e7eb",
+    marginTop: 10,
+  },
   platePreview: {
     width: "100%",
     height: 120,
@@ -514,7 +564,24 @@ const styles = StyleSheet.create({
   submitDisabled: { opacity: 0.6 },
   submitText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   cameraModal: { flex: 1, backgroundColor: "#111827" },
-  plateFrame: {
+  cameraHeader: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 50,
+    alignItems: "center",
+  },
+  cameraHeaderText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+    backgroundColor: "rgba(0,0,0,0.45)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  cameraFrame: {
     position: "absolute",
     left: 28,
     right: 28,
