@@ -8,14 +8,20 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { TodayAppointment } from "../services/api";
+import { getActiveLongTermAppointments, TodayAppointment } from "../services/api";
 import { checkAndNotify, notifyNow } from "../utils/notificationService";
 import { useAppointmentStream } from "../utils/useAppointmentStream";
 
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 นาที
 
+type AppointmentTab = "normal" | "longTerm";
+
 export default function NotificationScreen({ onScanRequest }: { onScanRequest?: () => void }) {
-  const [appointments, setAppointments] = useState<TodayAppointment[]>([]);
+  const [activeTab, setActiveTab] = useState<AppointmentTab>("normal");
+  // นัดหมายปกติ = single-use ของวันนี้ (มาเช็คอินตามเวลา)
+  const [todayAppointments, setTodayAppointments] = useState<TodayAppointment[]>([]);
+  // นัดหมายระยะยาว = QR ที่ยังไม่หมดอายุ ไม่ผูกกับวันนี้
+  const [longTermAppointments, setLongTermAppointments] = useState<TodayAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,13 +29,21 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchAppointments = useCallback(async () => {
+    // นัดหมายวันนี้ — ตัวที่ขับการแจ้งเตือน (เก็บเฉพาะ single-use ไว้โชว์แท็บปกติ)
     try {
       const data = await checkAndNotify();
-      setAppointments(data);
+      setTodayAppointments(data.filter((a) => a.qrMode !== "long-term"));
       setLastUpdated(new Date());
       setError(null);
     } catch {
       setError("ไม่สามารถโหลดข้อมูลได้");
+    }
+    // ระยะยาว — best effort: ถ้าโหลดไม่ได้ คงลิสต์เดิมไว้ ไม่ให้กระทบแท็บปกติ
+    try {
+      const longTerm = await getActiveLongTermAppointments();
+      setLongTermAppointments(longTerm);
+    } catch {
+      // เงียบไว้
     }
   }, []);
 
@@ -62,15 +76,18 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
     day: "numeric",
   });
 
+  const isLongTerm = activeTab === "longTerm";
+  const list = isLongTerm ? longTermAppointments : todayAppointments;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>นัดหมายวันนี้</Text>
-        <Text style={styles.headerDate}>{today}</Text>
+        <Text style={styles.headerTitle}>{isLongTerm ? "นัดหมายระยะยาว" : "นัดหมายวันนี้"}</Text>
+        <Text style={styles.headerDate}>{isLongTerm ? "QR ที่ยังไม่หมดอายุ" : today}</Text>
         <View style={styles.headerRow}>
           {!loading && (
             <View style={styles.countBadge}>
-              <Text style={styles.countText}>{appointments.length} รายการ</Text>
+              <Text style={styles.countText}>{list.length} รายการ</Text>
             </View>
           )}
           {lastUpdated && (
@@ -81,11 +98,33 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
         </View>
       </View>
 
+      {/* ── แท็บสลับ ปกติ / ระยะยาว ── */}
+      <View style={styles.tabRow}>
+        <TouchableOpacity
+          style={[styles.tabBtn, !isLongTerm && styles.tabBtnActive]}
+          onPress={() => setActiveTab("normal")}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.tabBtnText, !isLongTerm && styles.tabBtnTextActive]}>
+            นัดหมายปกติ ({todayAppointments.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabBtn, isLongTerm && styles.tabBtnActive]}
+          onPress={() => setActiveTab("longTerm")}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.tabBtnText, isLongTerm && styles.tabBtnTextActive]}>
+            ระยะยาว ({longTermAppointments.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#16a34a" />
         </View>
-      ) : error ? (
+      ) : error && !isLongTerm ? (
         <View style={styles.center}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity style={styles.retryBtn} onPress={onRefresh}>
@@ -94,7 +133,7 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
         </View>
       ) : (
         <FlatList
-          data={appointments}
+          data={list}
           keyExtractor={(item) => item._id}
           refreshControl={
             <RefreshControl
@@ -104,13 +143,13 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
               tintColor="#16a34a"
             />
           }
-          contentContainerStyle={
-            appointments.length === 0 ? styles.emptyContainer : styles.listContent
-          }
+          contentContainerStyle={list.length === 0 ? styles.emptyContainer : styles.listContent}
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={styles.emptyIcon}>📋</Text>
-              <Text style={styles.emptyText}>ไม่มีนัดหมายวันนี้</Text>
+              <Text style={styles.emptyText}>
+                {isLongTerm ? "ไม่มีนัดหมายระยะยาว" : "ไม่มีนัดหมายวันนี้"}
+              </Text>
             </View>
           }
           renderItem={({ item }) => <AppointmentCard item={item} onScanRequest={onScanRequest} />}
@@ -121,33 +160,46 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
 }
 
 function AppointmentCard({ item, onScanRequest }: { item: TodayAppointment; onScanRequest?: () => void }) {
+  const isLongTerm = item.qrMode === "long-term";
   const checkedIn = !!item.checkedInAt;
-  const Wrapper = (!checkedIn && onScanRequest) ? TouchableOpacity : View;
+  // ระยะยาวสแกนซ้ำได้เสมอ → แตะเพื่อสแกนได้ตลอด; ปกติแตะได้เฉพาะที่ยังไม่เช็คอิน
+  const tappable = !!onScanRequest && (isLongTerm || !checkedIn);
+  const Wrapper = tappable ? TouchableOpacity : View;
   return (
     <Wrapper
       style={styles.card}
-      {...(!checkedIn && onScanRequest ? { onPress: onScanRequest, activeOpacity: 0.75 } : {})}
+      {...(tappable ? { onPress: onScanRequest, activeOpacity: 0.75 } : {})}
     >
       <View style={styles.cardHeader}>
         <View style={styles.cardLeft}>
           <Text style={styles.visitorName}>{item.visitorName}</Text>
           <Text style={styles.organization}>{item.visitorOrganization}</Text>
         </View>
-        <View style={[styles.statusBadge, checkedIn ? styles.statusChecked : styles.statusPending]}>
-          <Text style={[styles.statusText, checkedIn ? styles.statusCheckedText : styles.statusPendingText]}>
-            {checkedIn ? "เช็คอินแล้ว" : "รอเช็คอิน"}
-          </Text>
-        </View>
+        {isLongTerm ? (
+          <View style={[styles.statusBadge, styles.statusLongTerm]}>
+            <Text style={[styles.statusText, styles.statusLongTermText]}>ระยะยาว</Text>
+          </View>
+        ) : (
+          <View style={[styles.statusBadge, checkedIn ? styles.statusChecked : styles.statusPending]}>
+            <Text style={[styles.statusText, checkedIn ? styles.statusCheckedText : styles.statusPendingText]}>
+              {checkedIn ? "เช็คอินแล้ว" : "รอเช็คอิน"}
+            </Text>
+          </View>
+        )}
       </View>
       <View style={styles.pillRow}>
-        <Pill icon="🕐" text={item.appointmentTime} />
+        {isLongTerm ? (
+          <Pill icon="📅" text={item.expiryDate ? `ถึง ${item.expiryDate}` : "ไม่จำกัด"} />
+        ) : (
+          <Pill icon="🕐" text={item.appointmentTime} />
+        )}
         <Pill icon="📌" text={item.purpose} />
         {item.visitorCount > 1 && <Pill icon="👥" text={`${item.visitorCount} คน`} />}
         {item.hasVehicle && item.licensePlate ? <Pill icon="🚗" text={item.licensePlate} /> : null}
       </View>
       <View style={styles.cardFooter}>
         <Text style={styles.createdBy}>มาพบ: {item.createdByName}</Text>
-        {!checkedIn && onScanRequest && (
+        {tappable && (
           <View style={styles.scanHint}>
             <Text style={styles.scanHintText}>📷 แตะเพื่อสแกน</Text>
           </View>
@@ -192,6 +244,26 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   countText: { color: "#fff", fontSize: 12, fontWeight: "600" },
+  tabRow: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  tabBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 9,
+    borderRadius: 8,
+    backgroundColor: "#f3f4f6",
+  },
+  tabBtnActive: { backgroundColor: "#16a34a" },
+  tabBtnText: { fontSize: 13, fontWeight: "600", color: "#6b7280" },
+  tabBtnTextActive: { color: "#fff" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   emptyContainer: { flex: 1 },
   listContent: { padding: 16, gap: 12 },
@@ -227,9 +299,11 @@ const styles = StyleSheet.create({
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
   statusChecked: { backgroundColor: "#dcfce7" },
   statusPending: { backgroundColor: "#f3f4f6" },
+  statusLongTerm: { backgroundColor: "#dbeafe" },
   statusText: { fontSize: 11, fontWeight: "600" },
   statusCheckedText: { color: "#16a34a" },
   statusPendingText: { color: "#6b7280" },
+  statusLongTermText: { color: "#2563eb" },
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
   pill: {
     flexDirection: "row",

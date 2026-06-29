@@ -70,16 +70,25 @@ export interface TodayAppointment {
   visitorOrganization: string;
   appointmentDate: string;
   appointmentTime: string;
+  expiryDate?: string;
   purpose: string;
   hasVehicle: boolean;
   licensePlate: string;
   checkedInAt: string | null;
   visitorCount: number;
   createdByName: string;
+  qrMode?: VisitorQrMode;
 }
 
 export async function getTodayAppointments(): Promise<TodayAppointment[]> {
   const res = await fetch(`${API_URL}/visitor-appointments/today`);
+  if (!res.ok) throw new Error("fetch failed");
+  return res.json();
+}
+
+// นัดหมายระยะยาวที่ยังไม่หมดอายุทั้งหมด (ไม่ผูกกับวันนี้) — ใช้กับแท็บ "ระยะยาว"
+export async function getActiveLongTermAppointments(): Promise<TodayAppointment[]> {
+  const res = await fetch(`${API_URL}/visitor-appointments/long-term`);
   if (!res.ok) throw new Error("fetch failed");
   return res.json();
 }
