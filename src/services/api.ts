@@ -14,12 +14,24 @@ export interface CheckinResult {
   success?: boolean;
   alreadyCheckedIn?: boolean;
   visitorName?: string;
+  visitorType?: string;
+  visitorTypeValue?: VisitorType;
+  canCheckout?: boolean;
+  qrMode?: VisitorQrMode;
   createdByName?: string;
   appointmentDate?: string;
   appointmentTime?: string;
   purpose?: string;
   hasVehicle?: boolean;
   licensePlate?: string;
+  error?: string;
+}
+
+export interface CheckoutResult {
+  success?: boolean;
+  departed?: boolean;
+  visitorName?: string;
+  visitorType?: string;
   error?: string;
 }
 
@@ -43,6 +55,15 @@ export async function checkinAppointment(id: string): Promise<CheckinResult> {
   return res.json();
 }
 
+// สแกนออก — ทำเครื่องหมายว่า rider/แม่ค้า "ไปแล้ว" (รองรับเฉพาะ rider/merchant ฝั่ง backend)
+export async function checkoutAppointment(id: string): Promise<CheckoutResult> {
+  const res = await fetch(`${API_URL}/visitor-appointments/${id}/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  return parseJsonResponse<CheckoutResult>(res);
+}
+
 export interface TodayAppointment {
   _id: string;
   visitorName: string;
@@ -64,15 +85,27 @@ export async function getTodayAppointments(): Promise<TodayAppointment[]> {
 }
 
 async function parseJsonResponse<T>(res: Response): Promise<T> {
-  const data = await res.json().catch(() => ({}));
+  const rawText = await res.text().catch(() => "");
+  let data: any = {};
+
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = { raw: rawText };
+    }
+  }
+
   if (!res.ok) {
     const message =
       typeof data?.error === "string"
         ? data.error
         : typeof data?.message === "string"
           ? data.message
-          : "request failed";
-    throw new Error(message);
+          : typeof data?.raw === "string" && data.raw.trim()
+            ? data.raw.trim()
+            : "request failed";
+    throw new Error(`HTTP ${res.status}: ${message}`);
   }
   return data as T;
 }
@@ -83,11 +116,17 @@ export interface HrEmployee {
   nickname?: string;
   department?: string;
   position?: string;
+  userId?: string;
+  employeeId?: string;
+  code?: string;
 }
 
 type RawHrEmployee = Partial<HrEmployee> & {
   code?: string;
   empCode?: string;
+  userId?: string;
+  user_id?: string;
+  userid?: string;
   employeeId?: string;
   employee_id?: string;
   employeeCode?: string;
@@ -120,6 +159,9 @@ function normalizeHrEmployee(item: RawHrEmployee): HrEmployee | null {
     nickname: item.nickname ?? item.nickName ?? item.nick_name,
     department: item.department,
     position: item.position,
+    userId: item.userId ?? item.user_id ?? item.userid,
+    employeeId: item.employeeId ?? item.employee_id,
+    code: item.code,
   };
 }
 
@@ -221,15 +263,54 @@ export async function searchHrEmployees(
     : new Error("ไม่สามารถดึงข้อมูลจาก HR API ได้");
 }
 
+// ประเภทผู้มาติดต่อ — ใช้ value/label ชุดเดียวกับฟอร์มเว็บ ICPBooking
+// (เว็บตัด rider/merchant ออกแล้วให้มาเลือกใน MB ตัวนี้ จึงรวมครบทั้ง 6)
+export type VisitorType =
+  | "visitor"
+  | "customer"
+  | "vendor"
+  | "supplier"
+  | "rider"
+  | "merchant";
+
+export type VisitorQrMode = "single-use" | "long-term";
+
+export const VISITOR_TYPE_OPTIONS: { value: VisitorType; label: string }[] = [
+  { value: "visitor", label: "visitor ผู้เยี่ยมชม" },
+  { value: "customer", label: "customer ลูกค้า" },
+  { value: "vendor", label: "vendor ผู้รับเหมา/ช่าง" },
+  { value: "supplier", label: "supplier คนส่งของ" },
+  { value: "rider", label: "rider" },
+  { value: "merchant", label: "แม่ค้า" },
+];
+
+// rider / แม่ค้า มาขายของ ไม่ได้มาพบใคร จึงไม่ต้องระบุผู้ที่ต้องการพบ (host)
+export function visitorTypeNeedsHost(visitorType: VisitorType): boolean {
+  return visitorType !== "rider" && visitorType !== "merchant";
+}
+
 export interface CreateWalkInVisitPayload {
   visitorName: string;
   hostEmployeeCode: string;
   hostName: string;
   hostNickname?: string;
+  visittingUserId?: string;
+  visittingUserName?: string;
+  visittingUserNickname?: string;
+  visitingUserId?: string;
+  visitingUserName?: string;
+  visitingUserNickname?: string;
   idCardNumber: string;
   companyName: string;
+  purpose?: string;
+  visitorType?: VisitorType;
+  visitorCount?: number;
+  qrMode?: VisitorQrMode;
+  expiryDate?: string;
   hasVehicle: boolean;
+  vehicleCount?: number;
   licensePlate?: string;
+  licensePlates?: string[];
   source: "mobile-walk-in";
 }
 
@@ -239,23 +320,64 @@ export interface CreateWalkInVisitResult {
   error?: string;
 }
 
-export async function createWalkInVisit(
-  payload: CreateWalkInVisitPayload,
-): Promise<CreateWalkInVisitResult> {
-  const res = await fetch(`${API_URL}/walk-in-visitors`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return parseJsonResponse<CreateWalkInVisitResult>(res);
-}
-
 export interface LicensePlateOcrResult {
   licensePlate?: string;
 }
 
-export interface IdCardOcrResult {
-  idCardNumber?: string;
+export async function createWalkInVisit(
+  payload: CreateWalkInVisitPayload,
+): Promise<CreateWalkInVisitResult> {
+  const requestBody = {
+    ...payload,
+    // ให้ค่า default ตรงกับฟอร์มเว็บ เผื่อ caller ไม่ได้ส่งมา
+    purpose: payload.purpose?.trim() || "",
+    visitorType: payload.visitorType ?? "visitor",
+    qrMode: payload.qrMode ?? "single-use",
+    expiryDate: payload.qrMode === "long-term" ? payload.expiryDate ?? "" : "",
+    visitorCount:
+      payload.visitorCount && payload.visitorCount > 0 ? payload.visitorCount : 1,
+    // Backend validation currently expects these legacy field names.
+    visittingUserId: payload.visittingUserId ?? payload.hostEmployeeCode,
+    visittingUserName: payload.visittingUserName ?? payload.hostName,
+    visittingUserNickname:
+      payload.visittingUserNickname ?? payload.hostNickname,
+    visitingUserId:
+      payload.visitingUserId ??
+      payload.visittingUserId ??
+      payload.hostEmployeeCode,
+    visitingUserName:
+      payload.visitingUserName ??
+      payload.visittingUserName ??
+      payload.hostName,
+    visitingUserNickname:
+      payload.visitingUserNickname ??
+      payload.visittingUserNickname ??
+      payload.hostNickname,
+  };
+
+  console.log("createWalkInVisit payload", {
+    visitorName: requestBody.visitorName,
+    hostEmployeeCode: requestBody.hostEmployeeCode,
+    hostName: requestBody.hostName,
+    visittingUserId: requestBody.visittingUserId,
+    visitingUserId: requestBody.visitingUserId,
+    companyName: requestBody.companyName,
+    visitorType: requestBody.visitorType,
+    visitorCount: requestBody.visitorCount,
+    qrMode: requestBody.qrMode,
+    hasVehicle: requestBody.hasVehicle,
+    licensePlate: requestBody.licensePlate,
+    idCardNumberMasked: requestBody.idCardNumber
+      ? `***${requestBody.idCardNumber.slice(-4)}`
+      : "",
+  });
+
+  const res = await fetch(`${API_URL}/walk-in-visitors`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
+  });
+  return parseJsonResponse<CreateWalkInVisitResult>(res);
 }
 
 export async function ocrLicensePlate(
@@ -273,19 +395,4 @@ export async function ocrLicensePlate(
     body: form,
   });
   return parseJsonResponse<LicensePlateOcrResult>(res);
-}
-
-export async function ocrIdCard(imageUri: string): Promise<IdCardOcrResult> {
-  const form = new FormData();
-  form.append("image", {
-    uri: imageUri,
-    name: "id-card.jpg",
-    type: "image/jpeg",
-  } as any);
-
-  const res = await fetch(`${API_URL}/walk-in-visitors/id-card-ocr`, {
-    method: "POST",
-    body: form,
-  });
-  return parseJsonResponse<IdCardOcrResult>(res);
 }

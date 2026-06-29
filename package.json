@@ -13,6 +13,7 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
+    "@react-native-community/datetimepicker": "8.4.4",
     "expo": "~54.0.33",
     "expo-background-fetch": "~14.0.9",
     "expo-background-task": "~1.0.10",

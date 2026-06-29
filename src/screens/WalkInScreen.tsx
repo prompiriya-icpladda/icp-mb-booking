@@ -1,8 +1,10 @@
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
+  Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -16,31 +18,39 @@ import {
 import {
   createWalkInVisit,
   HrEmployee,
-  ocrIdCard,
   ocrLicensePlate,
   searchHrEmployees,
+  VISITOR_TYPE_OPTIONS,
+  visitorTypeNeedsHost,
+  VisitorQrMode,
+  VisitorType,
 } from "../services/api";
+
+const MIN_VEHICLE_COUNT = 1;
 
 export default function WalkInScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [visitorName, setVisitorName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [idCardNumber, setIdCardNumber] = useState("");
+  const [purpose, setPurpose] = useState("");
+  const [visitorType, setVisitorType] = useState<VisitorType>("visitor");
+  const [visitorCount, setVisitorCount] = useState(1);
+  const [qrMode, setQrMode] = useState<VisitorQrMode>("single-use");
+  const [expiryDate, setExpiryDate] = useState<Date | null>(null);
+  const [showExpiryPicker, setShowExpiryPicker] = useState(false);
   const [hostQuery, setHostQuery] = useState("");
   const [hostResults, setHostResults] = useState<HrEmployee[]>([]);
   const [selectedHost, setSelectedHost] = useState<HrEmployee | null>(null);
   const [hostLoading, setHostLoading] = useState(false);
   const [hostError, setHostError] = useState<string | null>(null);
   const [hasVehicle, setHasVehicle] = useState(false);
-  const [licensePlate, setLicensePlate] = useState("");
-  const [licensePhotoUri, setLicensePhotoUri] = useState<string | null>(null);
-  const [idCardPhotoUri, setIdCardPhotoUri] = useState<string | null>(null);
-  const [cameraMode, setCameraMode] = useState<"license" | "idCard" | null>(
-    null,
-  );
+  const [vehicleCount, setVehicleCount] = useState(1);
+  const [licensePlates, setLicensePlates] = useState([""]);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
-  const [ocrLoading, setOcrLoading] = useState(false);
+  const [activePlateIndex, setActivePlateIndex] = useState<number | null>(null);
+  const [ocrLoadingIndex, setOcrLoadingIndex] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{
     type: "ok" | "error";
@@ -48,6 +58,9 @@ export default function WalkInScreen() {
   } | null>(null);
   const idInputRef = useRef<TextInput>(null);
   const cameraRef = useRef<CameraView>(null);
+
+  // rider / แม่ค้า มาขายของ ไม่ต้องเลือกผู้ที่ต้องการพบ
+  const hostRequired = visitorTypeNeedsHost(visitorType);
 
   useEffect(() => {
     const query = hostQuery.trim();
@@ -90,12 +103,22 @@ export default function WalkInScreen() {
     setVisitorName("");
     setCompanyName("");
     setIdCardNumber("");
+    setPurpose("");
+    setVisitorType("visitor");
+    setVisitorCount(1);
+    setQrMode("single-use");
+    setExpiryDate(null);
+    setShowExpiryPicker(false);
     setHostQuery("");
     setSelectedHost(null);
     setHostResults([]);
     setHasVehicle(false);
-    setLicensePlate("");
-    setLicensePhotoUri(null);
+    setVehicleCount(1);
+    setLicensePlates([""]);
+  }
+
+  function updateVisitorCount(nextCount: number) {
+    setVisitorCount(Math.max(1, Math.floor(nextCount || 0)));
   }
 
   function pickHost(employee: HrEmployee) {
@@ -112,100 +135,155 @@ export default function WalkInScreen() {
     setHostError(null);
   }
 
-  function validate() {
-    if (!visitorName.trim()) return "กรุณากรอกชื่อผู้ที่มา";
-    if (!selectedHost) return "กรุณาเลือกผู้ที่มาหาจาก HR";
+  function updateVehicleCount(nextCount: number) {
+    const normalized = Math.max(MIN_VEHICLE_COUNT, Math.floor(nextCount || 0));
+    setVehicleCount(normalized);
+    setLicensePlates((prev) => {
+      const next = [...prev];
+      while (next.length < normalized) next.push("");
+      return next.slice(0, normalized);
+    });
+  }
+
+  function setPlateAt(index: number, value: string) {
+    setLicensePlates((prev) => {
+      const next = [...prev];
+      next[index] = value.toUpperCase();
+      return next;
+    });
+  }
+
+  function activeLicensePlates() {
+    return licensePlates
+      .slice(0, vehicleCount)
+      .map((plate) => plate.trim().toUpperCase())
+      .filter(Boolean);
+  }
+
+  function validate(host: HrEmployee | null) {
+    if (!visitorName.trim()) return "กรุณากรอกชื่อผู้มาติดต่อ";
+    if (hostRequired && !host) return "กรุณาเลือกผู้ที่ต้องการพบจาก HR";
     if (!idCardNumber.trim()) return "กรุณากรอกรหัสบัตรประชาชน";
     if (!companyName.trim()) return "กรุณากรอกชื่อบริษัท";
-    if (hasVehicle && !licensePlate.trim()) return "กรุณากรอกทะเบียนรถ";
+    if (qrMode === "long-term" && !expiryDate) return "กรุณาเลือกวันหมดอายุ";
+    if (hasVehicle) {
+      if (vehicleCount < 1) return "กรุณาระบุจำนวนรถ";
+      const plates = activeLicensePlates();
+      if (plates.length !== vehicleCount) {
+        return "กรุณากรอกทะเบียนรถให้ครบตามจำนวนรถ";
+      }
+    }
     return null;
   }
 
   async function submit() {
-    const validationError = validate();
+    Keyboard.dismiss();
+
+    let host = selectedHost;
+    if (hostRequired && !host && hostQuery.trim().length >= 2) {
+      host = await resolveHostSelection(hostQuery);
+      if (host) {
+        setSelectedHost(host);
+        setHostQuery(formatEmployeeName(host));
+        setHostResults([]);
+        setHostError(null);
+      }
+    }
+    if (!hostRequired) host = null;
+
+    const validationError = validate(host);
     if (validationError) {
       setMessage({ type: "error", text: validationError });
+      Alert.alert("ข้อมูลไม่ครบ", validationError);
       return;
     }
-    if (!selectedHost) return;
+    if (hostRequired && !host) return;
+
+    const plates = hasVehicle ? activeLicensePlates() : [];
 
     setSubmitting(true);
     setMessage(null);
     try {
+      const hostUserId = host
+        ? host.userId ?? host.employeeId ?? host.employeeCode
+        : "";
       await createWalkInVisit({
         visitorName: visitorName.trim(),
-        hostEmployeeCode: selectedHost.employeeCode,
-        hostName: selectedHost.name,
-        hostNickname: selectedHost.nickname,
+        hostEmployeeCode: host?.employeeCode ?? "",
+        hostName: host?.name ?? "",
+        hostNickname: host?.nickname,
+        visittingUserId: hostUserId,
+        visittingUserName: host?.name ?? "",
+        visittingUserNickname: host?.nickname,
+        visitingUserId: hostUserId,
+        visitingUserName: host?.name ?? "",
+        visitingUserNickname: host?.nickname,
         idCardNumber: idCardNumber.trim(),
         companyName: companyName.trim(),
+        purpose: purpose.trim(),
+        visitorType,
+        visitorCount,
+        qrMode,
+        expiryDate:
+          qrMode === "long-term" && expiryDate
+            ? formatDateLocal(expiryDate)
+            : undefined,
         hasVehicle,
-        licensePlate: hasVehicle ? licensePlate.trim() : undefined,
+        vehicleCount: hasVehicle ? vehicleCount : 0,
+        licensePlate: plates[0],
+        licensePlates: plates,
         source: "mobile-walk-in",
       });
       resetForm();
       setMessage({ type: "ok", text: "บันทึกข้อมูลเรียบร้อย" });
     } catch (e) {
+      const errorMessage =
+        e instanceof Error ? e.message : "ไม่สามารถบันทึกข้อมูลได้";
       setMessage({
         type: "error",
-        text: e instanceof Error ? e.message : "ไม่สามารถบันทึกข้อมูลได้",
+        text: errorMessage,
       });
+      Alert.alert("บันทึกไม่สำเร็จ", errorMessage);
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function openCamera(mode: "license" | "idCard") {
+  async function openPlateCamera(index: number) {
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) return;
     }
-    setCameraMode(mode);
+    setActivePlateIndex(index);
     setCameraOpen(true);
     setCameraReady(false);
   }
 
-  async function takePhoto() {
-    if (!cameraReady || !cameraMode) return;
+  async function takePlatePhoto() {
+    if (!cameraReady || activePlateIndex == null) return;
     const photo = await cameraRef.current?.takePictureAsync({ quality: 0.75 });
     if (!photo?.uri) return;
 
     setCameraOpen(false);
-    setOcrLoading(true);
+    setCameraReady(false);
+    setOcrLoadingIndex(activePlateIndex);
     setMessage(null);
 
     try {
-      if (cameraMode === "license") {
-        setLicensePhotoUri(photo.uri);
-        const result = await ocrLicensePlate(photo.uri);
-        if (result.licensePlate) {
-          setLicensePlate(result.licensePlate);
-        } else {
-          setMessage({ type: "error", text: "OCR ไม่พบทะเบียน กรุณากรอกเอง" });
-        }
+      const result = await ocrLicensePlate(photo.uri);
+      if (result.licensePlate) {
+        setPlateAt(activePlateIndex, result.licensePlate);
       } else {
-        setIdCardPhotoUri(photo.uri);
-        const result = await ocrIdCard(photo.uri);
-        if (result.idCardNumber) {
-          setIdCardNumber(result.idCardNumber.replace(/[^0-9]/g, ""));
-        } else {
-          setMessage({
-            type: "error",
-            text: "OCR ไม่พบบัตรประชาชน กรุณากรอกเอง",
-          });
-        }
+        setMessage({ type: "error", text: "OCR ไม่พบทะเบียน กรุณากรอกเอง" });
       }
     } catch {
       setMessage({
         type: "error",
-        text:
-          cameraMode === "license"
-            ? "OCR ใช้งานไม่ได้ กรุณากรอกทะเบียนเอง"
-            : "OCR ใช้งานไม่ได้ กรุณากรอกบัตรประชาชนเอง",
+        text: "OCR ใช้งานไม่ได้ กรุณากรอกทะเบียนเอง",
       });
     } finally {
-      setOcrLoading(false);
-      setCameraMode(null);
+      setOcrLoadingIndex(null);
+      setActivePlateIndex(null);
     }
   }
 
@@ -216,91 +294,81 @@ export default function WalkInScreen() {
     >
       <View style={styles.header}>
         <Text style={styles.headerTitle}>ลงทะเบียนบุคคลภายนอก</Text>
-        <Text style={styles.headerSub}>ผู้มาติดต่อที่ไม่มีการนัดล่วงหน้า</Text>
+        <Text style={styles.headerSub}>
+          ผู้มาติดต่อที่ไม่มีการนัดล่วงหน้า
+        </Text>
       </View>
 
       <ScrollView
         contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
       >
-        <Field label="ชื่อผู้ที่มา">
+        <Field label="ชื่อผู้มาติดต่อ">
           <TextInput
             style={styles.input}
             value={visitorName}
             onChangeText={setVisitorName}
-            placeholder="ชื่อ-นามสกุล"
+            placeholder="ชื่อ-นามสกุลผู้มาติดต่อ"
             placeholderTextColor="#9ca3af"
           />
         </Field>
 
-        <Field label="ผู้ที่มาหา">
-          <View style={styles.searchRow}>
-            <TextInput
-              style={[styles.input, styles.searchInput]}
-              value={hostQuery}
-              onChangeText={(v) => {
-                setSelectedHost(null);
-                setHostQuery(v);
-              }}
-              placeholder="ค้นหาชื่อหรือรหัสพนักงาน"
-              placeholderTextColor="#9ca3af"
-            />
-            {selectedHost && (
-              <TouchableOpacity style={styles.clearBtn} onPress={clearHost}>
-                <Text style={styles.clearText}>ล้าง</Text>
-              </TouchableOpacity>
+        {hostRequired && (
+          <Field label="ผู้ที่ต้องการพบ">
+            <View style={styles.searchRow}>
+              <TextInput
+                style={[styles.input, styles.searchInput]}
+                value={hostQuery}
+                onChangeText={(v) => {
+                  setSelectedHost(null);
+                  setHostQuery(v);
+                }}
+                placeholder="ค้นหาชื่อหรือรหัสพนักงานของผู้ที่ต้องการพบ"
+                placeholderTextColor="#9ca3af"
+              />
+              {selectedHost && (
+                <TouchableOpacity style={styles.clearBtn} onPress={clearHost}>
+                  <Text style={styles.clearText}>ล้าง</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {hostLoading && (
+              <ActivityIndicator color="#16a34a" style={styles.inlineLoading} />
             )}
-          </View>
-          {hostLoading && (
-            <ActivityIndicator color="#16a34a" style={styles.inlineLoading} />
-          )}
-          {!!hostError && !hostLoading && (
-            <Text style={styles.hostError}>{hostError}</Text>
-          )}
-          {hostResults.map((item) => (
-            <TouchableOpacity
-              key={item.employeeCode}
-              style={styles.employeeItem}
-              onPress={() => pickHost(item)}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.employeeName}>
-                {formatEmployeeName(item)}
-              </Text>
-              <Text style={styles.employeeMeta}>
-                {[item.employeeCode, item.department, item.position]
-                  .filter(Boolean)
-                  .join(" | ")}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </Field>
+            {!!hostError && !hostLoading && (
+              <Text style={styles.hostError}>{hostError}</Text>
+            )}
+            {hostResults.map((item) => (
+              <TouchableOpacity
+                key={item.employeeCode}
+                style={styles.employeeItem}
+                onPress={() => pickHost(item)}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.employeeName}>
+                  {formatEmployeeName(item)}
+                </Text>
+                <Text style={styles.employeeMeta}>
+                  {[item.employeeCode, item.department, item.position]
+                    .filter(Boolean)
+                    .join(" | ")}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </Field>
+        )}
 
         <Field label="รหัสบัตรประชาชน">
-          <View style={styles.searchRow}>
-            <TextInput
-              ref={idInputRef}
-              style={[styles.input, styles.searchInput]}
-              value={idCardNumber}
-              onChangeText={(v) => setIdCardNumber(v.replace(/[^0-9]/g, ""))}
-              placeholder="ถ่ายรูป OCR หรือกรอกเอง"
-              placeholderTextColor="#9ca3af"
-              keyboardType="number-pad"
-              maxLength={13}
-            />
-            <TouchableOpacity
-              style={styles.clearBtn}
-              onPress={() => openCamera("idCard")}
-            >
-              <Text style={styles.clearText}>ถ่ายรูป</Text>
-            </TouchableOpacity>
-          </View>
-          {idCardPhotoUri && (
-            <Image
-              source={{ uri: idCardPhotoUri }}
-              style={styles.idCardPreview}
-            />
-          )}
+          <TextInput
+            ref={idInputRef}
+            style={styles.input}
+            value={idCardNumber}
+            onChangeText={(v) => setIdCardNumber(v.replace(/[^0-9]/g, ""))}
+            placeholder="กรอกรหัสบัตรประชาชน"
+            placeholderTextColor="#9ca3af"
+            keyboardType="number-pad"
+            maxLength={13}
+          />
         </Field>
 
         <Field label="ชื่อบริษัท">
@@ -313,49 +381,206 @@ export default function WalkInScreen() {
           />
         </Field>
 
+        <Field label="จุดประสงค์การมาติดต่อ">
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            value={purpose}
+            onChangeText={setPurpose}
+            placeholder="ระบุจุดประสงค์ (ถ้ามี)"
+            placeholderTextColor="#9ca3af"
+            multiline
+            numberOfLines={2}
+          />
+        </Field>
+
+        <Field label="ประเภทผู้มาติดต่อ">
+          <View style={styles.typeRow}>
+            {VISITOR_TYPE_OPTIONS.map((option) => {
+              const active = visitorType === option.value;
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[styles.typeChip, active && styles.typeChipActive]}
+                  onPress={() => setVisitorType(option.value)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.typeChipText,
+                      active && styles.typeChipTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Field>
+
+        <Field label="จำนวนผู้มาติดต่อ">
+          <View style={styles.vehicleCountRow}>
+            <TouchableOpacity
+              style={styles.counterBtn}
+              onPress={() => updateVisitorCount(visitorCount - 1)}
+            >
+              <Text style={styles.counterText}>-</Text>
+            </TouchableOpacity>
+            <TextInput
+              style={[styles.input, styles.vehicleCountInput]}
+              value={String(visitorCount)}
+              onChangeText={(v) =>
+                updateVisitorCount(Number(v.replace(/[^0-9]/g, "")) || 1)
+              }
+              keyboardType="number-pad"
+              maxLength={3}
+            />
+            <TouchableOpacity
+              style={styles.counterBtn}
+              onPress={() => updateVisitorCount(visitorCount + 1)}
+            >
+              <Text style={styles.counterText}>+</Text>
+            </TouchableOpacity>
+          </View>
+        </Field>
+
+        <Field label="รูปแบบ QR Code">
+          <View style={styles.segmentRow}>
+            <SegmentButton
+              active={qrMode === "single-use"}
+              label="ครั้งเดียว"
+              onPress={() => setQrMode("single-use")}
+            />
+            <SegmentButton
+              active={qrMode === "long-term"}
+              label="ระยะยาว"
+              onPress={() => {
+                setQrMode("long-term");
+                setExpiryDate((prev) => prev ?? defaultExpiryDate());
+              }}
+            />
+          </View>
+          <Text style={styles.helperText}>
+            QR ระยะยาวสามารถสแกนซ้ำได้ เหมาะกับ rider / แม่ค้า / ผู้รับเหมาที่มาประจำ
+          </Text>
+        </Field>
+
+        {qrMode === "long-term" && (
+          <Field label="วันหมดอายุ">
+            <TouchableOpacity
+              style={[styles.input, styles.dateInput]}
+              onPress={() => setShowExpiryPicker(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={expiryDate ? styles.dateText : styles.datePlaceholder}>
+                {expiryDate ? formatDateLocal(expiryDate) : "เลือกวันหมดอายุ"}
+              </Text>
+            </TouchableOpacity>
+            {showExpiryPicker && (
+              <DateTimePicker
+                value={expiryDate ?? defaultExpiryDate()}
+                mode="date"
+                display={Platform.OS === "ios" ? "inline" : "default"}
+                minimumDate={new Date()}
+                onChange={(event, selected) => {
+                  if (Platform.OS !== "ios") setShowExpiryPicker(false);
+                  if (event.type === "set" && selected) {
+                    setExpiryDate(selected);
+                  } else if (event.type === "dismissed") {
+                    setShowExpiryPicker(false);
+                  }
+                }}
+              />
+            )}
+            {Platform.OS === "ios" && showExpiryPicker && (
+              <TouchableOpacity
+                style={styles.dateDoneBtn}
+                onPress={() => setShowExpiryPicker(false)}
+              >
+                <Text style={styles.dateDoneText}>เสร็จ</Text>
+              </TouchableOpacity>
+            )}
+          </Field>
+        )}
+
         <Field label="มีรถไหม">
           <View style={styles.segmentRow}>
             <SegmentButton
               active={hasVehicle}
               label="มีรถ"
-              onPress={() => setHasVehicle(true)}
+              onPress={() => {
+                setHasVehicle(true);
+                updateVehicleCount(vehicleCount || 1);
+              }}
             />
             <SegmentButton
               active={!hasVehicle}
               label="ไม่มีรถ"
-              onPress={() => setHasVehicle(false)}
+              onPress={() => {
+                setHasVehicle(false);
+                updateVehicleCount(1);
+              }}
             />
           </View>
         </Field>
 
         {hasVehicle && (
-          <Field label="ทะเบียนรถ">
-            <View style={styles.searchRow}>
-              <TextInput
-                style={[styles.input, styles.searchInput]}
-                value={licensePlate}
-                onChangeText={setLicensePlate}
-                placeholder="ถ่ายรูป OCR หรือกรอกเอง"
-                placeholderTextColor="#9ca3af"
-                autoCapitalize="characters"
-              />
-              <TouchableOpacity
-                style={styles.clearBtn}
-                onPress={() => openCamera("license")}
+          <>
+            <Field label="จำนวนรถ">
+              <View style={styles.vehicleCountRow}>
+                <TouchableOpacity
+                  style={styles.counterBtn}
+                  onPress={() => updateVehicleCount(vehicleCount - 1)}
+                >
+                  <Text style={styles.counterText}>-</Text>
+                </TouchableOpacity>
+                <TextInput
+                  style={[styles.input, styles.vehicleCountInput]}
+                  value={String(vehicleCount)}
+                  onChangeText={(v) =>
+                    updateVehicleCount(Number(v.replace(/[^0-9]/g, "")) || 1)
+                  }
+                  keyboardType="number-pad"
+                  maxLength={2}
+                />
+                <TouchableOpacity
+                  style={styles.counterBtn}
+                  onPress={() => updateVehicleCount(vehicleCount + 1)}
+                >
+                  <Text style={styles.counterText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </Field>
+
+            {Array.from({ length: vehicleCount }, (_, index) => (
+              <Field
+                key={`plate-${index}`}
+                label={`ทะเบียนรถ${vehicleCount > 1 ? ` คันที่ ${index + 1}` : ""}`}
               >
-                <Text style={styles.clearText}>ถ่ายรูป</Text>
-              </TouchableOpacity>
-            </View>
-            {ocrLoading && (
-              <ActivityIndicator color="#16a34a" style={styles.inlineLoading} />
-            )}
-            {licensePhotoUri && (
-              <Image
-                source={{ uri: licensePhotoUri }}
-                style={styles.platePreview}
-              />
-            )}
-          </Field>
+                <View style={styles.searchRow}>
+                  <TextInput
+                    style={[styles.input, styles.searchInput]}
+                    value={licensePlates[index] ?? ""}
+                    onChangeText={(v) => setPlateAt(index, v)}
+                    placeholder="กรอกทะเบียนรถ"
+                    placeholderTextColor="#9ca3af"
+                    autoCapitalize="characters"
+                  />
+                  <TouchableOpacity
+                    style={styles.clearBtn}
+                    onPress={() => openPlateCamera(index)}
+                    disabled={ocrLoadingIndex === index}
+                  >
+                    {ocrLoadingIndex === index ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.clearText}>ถ่ายรูป</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </Field>
+            ))}
+          </>
         )}
 
         {message && (
@@ -385,7 +610,7 @@ export default function WalkInScreen() {
         animationType="slide"
         onRequestClose={() => {
           setCameraOpen(false);
-          setCameraMode(null);
+          setActivePlateIndex(null);
         }}
       >
         <View style={styles.cameraModal}>
@@ -396,11 +621,7 @@ export default function WalkInScreen() {
             onCameraReady={() => setCameraReady(true)}
           />
           <View style={styles.cameraHeader}>
-            <Text style={styles.cameraHeaderText}>
-              {cameraMode === "license"
-                ? "ถ่ายรูปทะเบียนรถ"
-                : "ถ่ายรูปบัตรประชาชน"}
-            </Text>
+            <Text style={styles.cameraHeaderText}>ถ่ายรูปทะเบียนรถ</Text>
           </View>
           <View style={styles.cameraFrame} />
           <View style={styles.cameraActions}>
@@ -408,7 +629,7 @@ export default function WalkInScreen() {
               style={styles.cameraCancel}
               onPress={() => {
                 setCameraOpen(false);
-                setCameraMode(null);
+                setActivePlateIndex(null);
               }}
             >
               <Text style={styles.cameraCancelText}>ยกเลิก</Text>
@@ -418,7 +639,7 @@ export default function WalkInScreen() {
                 styles.cameraCapture,
                 !cameraReady && styles.submitDisabled,
               ]}
-              onPress={takePhoto}
+              onPress={takePlatePhoto}
               disabled={!cameraReady}
             >
               <Text style={styles.cameraCaptureText}>ถ่าย</Text>
@@ -467,10 +688,54 @@ function SegmentButton({
   );
 }
 
+function formatDateLocal(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function defaultExpiryDate() {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  return d;
+}
+
 function formatEmployeeName(employee: HrEmployee) {
   return employee.nickname
     ? `${employee.name} (${employee.nickname})`
     : employee.name;
+}
+
+function normalizeText(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function matchesEmployeeQuery(employee: HrEmployee, query: string) {
+  const normalizedQuery = normalizeText(query);
+  if (!normalizedQuery) return false;
+
+  return [
+    employee.employeeCode,
+    employee.name,
+    employee.nickname ?? "",
+    formatEmployeeName(employee),
+  ].some((value) => normalizeText(value) === normalizedQuery);
+}
+
+async function resolveHostSelection(query: string) {
+  try {
+    const results = await searchHrEmployees(query);
+    if (results.length === 1) return results[0];
+
+    const matches = results.filter((employee) =>
+      matchesEmployeeQuery(employee, query),
+    );
+
+    return matches.length === 1 ? matches[0] : null;
+  } catch {
+    return null;
+  }
 }
 
 const styles = StyleSheet.create({
@@ -496,13 +761,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 11,
   },
+  textArea: { minHeight: 64, textAlignVertical: "top", paddingTop: 11 },
   searchRow: { flexDirection: "row", gap: 8, alignItems: "center" },
   searchInput: { flex: 1 },
+  typeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  typeChip: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  typeChipActive: { backgroundColor: "#dcfce7", borderColor: "#16a34a" },
+  typeChipText: { color: "#6b7280", fontSize: 13, fontWeight: "700" },
+  typeChipTextActive: { color: "#166534" },
+  helperText: { color: "#6b7280", fontSize: 12, marginTop: 2 },
+  dateInput: { justifyContent: "center" },
+  dateText: { color: "#111827", fontSize: 15 },
+  datePlaceholder: { color: "#9ca3af", fontSize: 15 },
+  dateDoneBtn: {
+    backgroundColor: "#1f2937",
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  dateDoneText: { color: "#fff", fontSize: 14, fontWeight: "700" },
   clearBtn: {
     backgroundColor: "#1f2937",
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 12,
+    minWidth: 84,
+    alignItems: "center",
   },
   clearText: { color: "#fff", fontSize: 13, fontWeight: "700" },
   inlineLoading: { alignSelf: "flex-start", marginTop: 4 },
@@ -529,19 +821,17 @@ const styles = StyleSheet.create({
   segmentActive: { backgroundColor: "#dcfce7", borderColor: "#16a34a" },
   segmentText: { color: "#6b7280", fontSize: 14, fontWeight: "700" },
   segmentTextActive: { color: "#166534" },
-  idCardPreview: {
-    width: "100%",
-    height: 160,
+  vehicleCountRow: { flexDirection: "row", gap: 8, alignItems: "center" },
+  counterBtn: {
+    width: 48,
+    height: 48,
     borderRadius: 8,
-    backgroundColor: "#e5e7eb",
-    marginTop: 10,
+    backgroundColor: "#1f2937",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  platePreview: {
-    width: "100%",
-    height: 120,
-    borderRadius: 8,
-    backgroundColor: "#e5e7eb",
-  },
+  counterText: { color: "#fff", fontSize: 22, fontWeight: "700" },
+  vehicleCountInput: { flex: 1, textAlign: "center" },
   okText: {
     color: "#15803d",
     fontSize: 13,
