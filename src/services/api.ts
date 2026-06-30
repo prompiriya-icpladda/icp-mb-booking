@@ -108,6 +108,20 @@ export function isLongTermCheckoutable(
   );
 }
 
+export type LongTermCardAction = "detail" | "scan" | "select";
+
+// ตัดสินว่าแตะการ์ด long-term แล้วทำอะไร (pure → unit test ได้)
+//  - select mode: เลือก
+//  - มาแล้ว + rider/แม่ค้า: เปิดหน้ารายละเอียด
+//  - อื่นๆ: ไปสแกน (เหมือนเดิม)
+export function longTermCardAction(
+  a: Pick<TodayAppointment, "checkedInAt" | "completedAt" | "visitorType">,
+  selectMode: boolean,
+): LongTermCardAction {
+  if (selectMode) return "select";
+  return isLongTermCheckoutable(a) ? "detail" : "scan";
+}
+
 export async function getTodayAppointments(): Promise<TodayAppointment[]> {
   const res = await fetch(`${API_URL}/visitor-appointments/today`);
   if (!res.ok) throw new Error("fetch failed");

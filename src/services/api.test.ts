@@ -1,4 +1,4 @@
-import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, isLongTermCheckoutable } from "./api";
+import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, isLongTermCheckoutable, longTermCardAction } from "./api";
 
 describe("visitorTypeNeedsIdCard", () => {
   it("returns false for rider and merchant", () => {
@@ -110,5 +110,32 @@ describe("isLongTermCheckoutable", () => {
     expect(
       isLongTermCheckoutable({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: null }),
     ).toBe(false);
+  });
+});
+
+describe("longTermCardAction", () => {
+  const arrivedRider = { visitorType: "rider" as const, checkedInAt: "2026-06-30T01:00:00Z", completedAt: null };
+  const arrivedMerchant = { visitorType: "merchant" as const, checkedInAt: "2026-06-30T01:00:00Z", completedAt: null };
+
+  it("returns 'select' in select mode regardless of type/status", () => {
+    expect(longTermCardAction(arrivedRider, true)).toBe("select");
+    expect(longTermCardAction({ visitorType: "visitor", checkedInAt: null, completedAt: null }, true)).toBe("select");
+  });
+
+  it("returns 'detail' for an arrived rider/merchant when not in select mode", () => {
+    expect(longTermCardAction(arrivedRider, false)).toBe("detail");
+    expect(longTermCardAction(arrivedMerchant, false)).toBe("detail");
+  });
+
+  it("returns 'scan' for a rider/merchant that only registered (not arrived)", () => {
+    expect(longTermCardAction({ visitorType: "merchant", checkedInAt: null, completedAt: null }, false)).toBe("scan");
+  });
+
+  it("returns 'scan' for a rider/merchant already checked out", () => {
+    expect(longTermCardAction({ visitorType: "rider", checkedInAt: "2026-06-30T01:00:00Z", completedAt: "2026-06-30T05:00:00Z" }, false)).toBe("scan");
+  });
+
+  it("returns 'scan' for a host-type visitor even when arrived", () => {
+    expect(longTermCardAction({ visitorType: "visitor", checkedInAt: "2026-06-30T01:00:00Z", completedAt: null }, false)).toBe("scan");
   });
 });
