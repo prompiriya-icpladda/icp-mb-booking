@@ -79,6 +79,7 @@ function TabBar({
 function MainApp() {
   const [activeTab, setActiveTab] = useState<Tab>("notification");
   const [fromNotification, setFromNotification] = useState(false);
+  const [checkoutTargetId, setCheckoutTargetId] = useState<string | null>(null);
 
   function handleScanRequest() {
     setFromNotification(true);
@@ -86,6 +87,12 @@ function MainApp() {
   }
 
   function handleBackToNotification() {
+    setFromNotification(false);
+    setActiveTab("notification");
+  }
+
+  function handleGoCheckout(id: string) {
+    setCheckoutTargetId(id);
     setFromNotification(false);
     setActiveTab("notification");
   }
@@ -99,10 +106,15 @@ function MainApp() {
     <View style={styles.root}>
       <View style={styles.screen}>
         {activeTab === "notification" ? (
-          <NotificationScreen onScanRequest={handleScanRequest} />
+          <NotificationScreen
+            onScanRequest={handleScanRequest}
+            openCheckoutId={checkoutTargetId}
+            onCheckoutConsumed={() => setCheckoutTargetId(null)}
+          />
         ) : activeTab === "scanner" ? (
           <ScannerScreen
             onBack={fromNotification ? handleBackToNotification : undefined}
+            onCheckout={handleGoCheckout}
           />
         ) : (
           <WalkInScreen />
