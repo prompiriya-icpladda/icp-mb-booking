@@ -127,8 +127,9 @@ describe("pruneEntries", () => {
 
 describe("addEntryToList", () => {
   it("ใส่ entry ใหม่ไว้หัวลิสต์", () => {
+    // new entry เป็น new-appointment เพื่อทดสอบ prepend โดยไม่ชน dedupe (head เป็น update)
     const list = [entry({ id: "a", timestamp: NOW - 1000 })];
-    const out = addEntryToList(list, entry({ id: "b", timestamp: NOW }), NOW);
+    const out = addEntryToList(list, entry({ id: "b", kind: "new-appointment", timestamp: NOW }), NOW);
     expect(out.map((e) => e.id)).toEqual(["b", "a"]);
   });
   it("dedupe update ที่ติดกันภายใน 60 วิ (ไม่เพิ่ม)", () => {
