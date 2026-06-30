@@ -3,15 +3,17 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { checkoutAppointment, getActiveLongTermAppointments, isLongTermCheckoutable, longTermStatus, LongTermStatus, TodayAppointment } from "../services/api";
+import { checkoutAppointment, getActiveLongTermAppointments, isLongTermCheckoutable, longTermCardAction, longTermStatus, LongTermStatus, TodayAppointment } from "../services/api";
 import { checkAndNotify, notifyNow } from "../utils/notificationService";
 import { useAppointmentStream } from "../utils/useAppointmentStream";
+import LongTermDetailScreen from "./LongTermDetailScreen";
 
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 นาที
 
@@ -30,6 +32,7 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [checkingOut, setCheckingOut] = useState(false);
+  const [detailItem, setDetailItem] = useState<TodayAppointment | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchAppointments = useCallback(async () => {
@@ -216,6 +219,7 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
             <AppointmentCard
               item={item}
               onScanRequest={onScanRequest}
+              onOpenDetail={setDetailItem}
               selectMode={isLongTerm && selectMode}
               selected={selectedIds.has(item._id)}
               selectable={isLongTermCheckoutable(item)}
@@ -246,6 +250,23 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
           </TouchableOpacity>
         </View>
       )}
+
+      <Modal
+        visible={!!detailItem}
+        animationType="slide"
+        onRequestClose={() => setDetailItem(null)}
+      >
+        {detailItem && (
+          <LongTermDetailScreen
+            appointment={detailItem}
+            onBack={() => setDetailItem(null)}
+            onCheckedOut={() => {
+              setDetailItem(null);
+              fetchAppointments();
+            }}
+          />
+        )}
+      </Modal>
     </View>
   );
 }
@@ -253,6 +274,7 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
 function AppointmentCard({
   item,
   onScanRequest,
+  onOpenDetail,
   selectMode = false,
   selected = false,
   selectable = false,
@@ -260,6 +282,7 @@ function AppointmentCard({
 }: {
   item: TodayAppointment;
   onScanRequest?: () => void;
+  onOpenDetail?: (item: TodayAppointment) => void;
   selectMode?: boolean;
   selected?: boolean;
   selectable?: boolean;
@@ -269,12 +292,21 @@ function AppointmentCard({
   const checkedIn = !!item.checkedInAt;
   const ltStatus = longTermStatus(item);
 
-  // โหมดเลือก: แตะเพื่อเลือก (เฉพาะใบที่เลือกได้); โหมดปกติ: แตะเพื่อสแกน
+  // long-term: longTermCardAction ตัดสิน select/detail/scan; การ์ดปกติ: สแกนเหมือนเดิม
+  const wantsDetail = isLongTerm && longTermCardAction(item, selectMode) === "detail";
+
+  // โหมดเลือก: แตะเพื่อเลือก; "มาแล้ว" rider/แม่ค้า: เปิดรายละเอียด; อื่นๆ: สแกน
   const tappable = selectMode
     ? selectable
-    : !!onScanRequest && (isLongTerm || !checkedIn);
+    : wantsDetail
+      ? !!onOpenDetail
+      : !!onScanRequest && (isLongTerm || !checkedIn);
   const Wrapper = tappable ? TouchableOpacity : View;
-  const handlePress = selectMode ? () => onToggleSelect?.(item._id) : onScanRequest;
+  const handlePress = selectMode
+    ? () => onToggleSelect?.(item._id)
+    : wantsDetail
+      ? () => onOpenDetail?.(item)
+      : onScanRequest;
 
   return (
     <Wrapper
@@ -326,7 +358,9 @@ function AppointmentCard({
         <Text style={styles.createdBy}>มาพบ: {item.createdByName}</Text>
         {!selectMode && tappable && (
           <View style={styles.scanHint}>
-            <Text style={styles.scanHintText}>📷 แตะเพื่อสแกน</Text>
+            <Text style={styles.scanHintText}>
+              {wantsDetail ? "› ดูรายละเอียด" : "📷 แตะเพื่อสแกน"}
+            </Text>
           </View>
         )}
       </View>
