@@ -1,4 +1,4 @@
-import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, presetExpiryDate } from "./api";
+import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, presetExpiryDate, EXPIRY_PRESET_OPTIONS } from "./api";
 
 describe("visitorTypeNeedsIdCard", () => {
   it("returns false for rider and merchant", () => {
@@ -206,5 +206,18 @@ describe("presetExpiryDate", () => {
     const ref = new Date("2026-06-30T00:00:00");
     presetExpiryDate("1y", ref);
     expect(ymd(ref)).toEqual([2026, 5, 30]); // เดิมไม่เปลี่ยน
+  });
+});
+
+describe("EXPIRY_PRESET_OPTIONS", () => {
+  it("exposes the preset values and Thai labels exactly", () => {
+    expect(EXPIRY_PRESET_OPTIONS).toEqual([
+      { value: "1w", label: "1 อาทิตย์" },
+      { value: "1m", label: "1 เดือน" },
+      { value: "3m", label: "3 เดือน" },
+      { value: "6m", label: "6 เดือน" },
+      { value: "1y", label: "1 ปี" },
+      { value: "custom", label: "กำหนดเอง" },
+    ]);
   });
 });
