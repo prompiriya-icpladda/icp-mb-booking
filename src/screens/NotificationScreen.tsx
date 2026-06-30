@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -94,8 +95,17 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
     if (selectedIds.size === 0) return;
     setCheckingOut(true);
     try {
-      await Promise.allSettled([...selectedIds].map((id) => checkoutAppointment(id)));
+      const results = await Promise.allSettled(
+        [...selectedIds].map((id) => checkoutAppointment(id)),
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
       await fetchAppointments();
+      if (failed > 0) {
+        Alert.alert(
+          "เช็คเอาท์ไม่สำเร็จ",
+          `มี ${failed} รายการที่เช็คเอาท์ไม่สำเร็จ กรุณาลองใหม่`,
+        );
+      }
     } finally {
       setCheckingOut(false);
       exitSelectMode();
@@ -193,7 +203,7 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
               tintColor="#16a34a"
             />
           }
-          contentContainerStyle={list.length === 0 ? styles.emptyContainer : styles.listContent}
+          contentContainerStyle={[list.length === 0 ? styles.emptyContainer : styles.listContent, isLongTerm && selectMode && styles.listContentSelect]}
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={styles.emptyIcon}>📋</Text>
@@ -402,6 +412,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   emptyContainer: { flex: 1 },
   listContent: { padding: 16, gap: 12 },
+  listContentSelect: { paddingBottom: 96 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
   emptyText: { color: "#6b7280", fontSize: 15 },
   errorText: { color: "#dc2626", fontSize: 14, marginBottom: 12, textAlign: "center" },
@@ -434,12 +445,10 @@ const styles = StyleSheet.create({
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
   statusChecked: { backgroundColor: "#dcfce7" },
   statusPending: { backgroundColor: "#f3f4f6" },
-  statusLongTerm: { backgroundColor: "#dbeafe" },
   statusCheckedOut: { backgroundColor: "#e5e7eb" },
   statusText: { fontSize: 11, fontWeight: "600" },
   statusCheckedText: { color: "#16a34a" },
   statusPendingText: { color: "#6b7280" },
-  statusLongTermText: { color: "#2563eb" },
   statusCheckedOutText: { color: "#374151" },
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
   pill: {
