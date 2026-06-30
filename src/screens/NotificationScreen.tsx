@@ -19,7 +19,15 @@ const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 นาที
 
 type AppointmentTab = "normal" | "longTerm";
 
-export default function NotificationScreen({ onScanRequest }: { onScanRequest?: () => void }) {
+export default function NotificationScreen({
+  onScanRequest,
+  openCheckoutId,
+  onCheckoutConsumed,
+}: {
+  onScanRequest?: () => void;
+  openCheckoutId?: string | null;
+  onCheckoutConsumed?: () => void;
+}) {
   const [activeTab, setActiveTab] = useState<AppointmentTab>("normal");
   // นัดหมายปกติ = single-use ของวันนี้ (มาเช็คอินตามเวลา)
   const [todayAppointments, setTodayAppointments] = useState<TodayAppointment[]>([]);
@@ -33,6 +41,7 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [checkingOut, setCheckingOut] = useState(false);
   const [detailItem, setDetailItem] = useState<TodayAppointment | null>(null);
+  const [pendingCheckoutId, setPendingCheckoutId] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchAppointments = useCallback(async () => {
@@ -73,6 +82,24 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
   useEffect(() => {
     exitSelectMode();
   }, [activeTab]);
+
+  // รับ id จากการสแกนซ้ำ → สลับไปแท็บระยะยาว ตั้ง pending แล้วเคลียร์ฝั่ง App (กัน re-trigger ตอน remount)
+  useEffect(() => {
+    if (!openCheckoutId) return;
+    setActiveTab("longTerm");
+    setPendingCheckoutId(openCheckoutId);
+    onCheckoutConsumed?.();
+  }, [openCheckoutId, onCheckoutConsumed]);
+
+  // เมื่อมี pending และข้อมูลระยะยาวพร้อม → เปิด detail/checkout ของคนนั้น (re-run เองเมื่อ list มาทีหลัง)
+  useEffect(() => {
+    if (!pendingCheckoutId) return;
+    const item = longTermAppointments.find((a) => a._id === pendingCheckoutId);
+    if (item) {
+      setDetailItem(item);
+      setPendingCheckoutId(null);
+    }
+  }, [pendingCheckoutId, longTermAppointments]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
