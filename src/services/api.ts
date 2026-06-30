@@ -303,6 +303,16 @@ export function visitorTypeNeedsHost(visitorType: VisitorType): boolean {
   return visitorType !== "rider" && visitorType !== "merchant";
 }
 
+// บัตรประชาชน: ไม่ต้องใช้สำหรับ rider / merchant (แม่ค้า)
+export function visitorTypeNeedsIdCard(visitorType: VisitorType): boolean {
+  return visitorType !== "rider" && visitorType !== "merchant";
+}
+
+// ชื่อบริษัท: ไม่ต้องใช้สำหรับ merchant (แม่ค้า)
+export function visitorTypeNeedsCompany(visitorType: VisitorType): boolean {
+  return visitorType !== "merchant";
+}
+
 export interface CreateWalkInVisitPayload {
   visitorName: string;
   hostEmployeeCode: string;
