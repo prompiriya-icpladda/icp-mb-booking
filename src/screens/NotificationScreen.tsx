@@ -45,6 +45,9 @@ export default function NotificationScreen({
   const [detailItem, setDetailItem] = useState<TodayAppointment | null>(null);
   const [history, setHistory] = useState<NotificationHistoryEntry[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const listRef = useRef<FlatList<TodayAppointment>>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pendingCheckoutId, setPendingCheckoutId] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -160,6 +163,36 @@ export default function NotificationScreen({
     }
   }
 
+  function handleHistoryPress(item: NotificationHistoryEntry) {
+    const targetTab: AppointmentTab = item.tab ?? "normal";
+    const pool = targetTab === "longTerm" ? longTermAppointments : todayAppointments;
+    const found = item.appointmentId
+      ? pool.find((a) => a._id === item.appointmentId)
+      : undefined;
+
+    setActiveTab(targetTab);
+
+    if (item.appointmentId && !found) {
+      Alert.alert("ไม่พบนัดหมาย", "นัดหมายนี้ไม่อยู่ในรายการแล้ว");
+      return;
+    }
+    if (!found) return; // entry แบบ update ไม่มี id → แค่สลับไปแท็บปกติ
+
+    setHighlightId(found._id);
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    highlightTimer.current = setTimeout(() => setHighlightId(null), 2500);
+
+    // best-effort scroll ไปการ์ดเป้าหมายหลังแท็บ render
+    setTimeout(() => {
+      try {
+        const index = pool.findIndex((a) => a._id === found._id);
+        if (index >= 0) listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+      } catch {
+        // เลื่อนไม่ได้ก็ไม่เป็นไร
+      }
+    }, 200);
+  }
+
   const today = new Date().toLocaleDateString("th-TH", {
     weekday: "long",
     year: "numeric",
@@ -254,6 +287,7 @@ export default function NotificationScreen({
               { text: "ล้าง", style: "destructive", onPress: () => clearHistory() },
             ]);
           }}
+          onPressRow={handleHistoryPress}
         />
       ) : loading ? (
         <View style={styles.center}>
@@ -268,6 +302,8 @@ export default function NotificationScreen({
         </View>
       ) : (
         <FlatList
+          ref={listRef}
+          onScrollToIndexFailed={() => {}}
           data={list}
           keyExtractor={(item) => item._id}
           refreshControl={
@@ -296,6 +332,7 @@ export default function NotificationScreen({
               selected={selectedIds.has(item._id)}
               selectable={isLongTermCheckoutable(item)}
               onToggleSelect={toggleSelect}
+              highlighted={item._id === highlightId}
             />
           )}
         />
@@ -351,6 +388,7 @@ function AppointmentCard({
   selected = false,
   selectable = false,
   onToggleSelect,
+  highlighted = false,
 }: {
   item: TodayAppointment;
   onScanRequest?: () => void;
@@ -359,6 +397,7 @@ function AppointmentCard({
   selected?: boolean;
   selectable?: boolean;
   onToggleSelect?: (id: string) => void;
+  highlighted?: boolean;
 }) {
   const isLongTerm = item.qrMode === "long-term";
   const checkedIn = !!item.checkedInAt;
@@ -386,6 +425,7 @@ function AppointmentCard({
         styles.card,
         selectMode && !selectable && styles.cardDisabled,
         selected && styles.cardSelected,
+        highlighted && styles.cardHighlight,
       ]}
       {...(tappable ? { onPress: handlePress, activeOpacity: 0.75 } : {})}
     >
@@ -443,9 +483,11 @@ function AppointmentCard({
 function HistoryList({
   history,
   onClear,
+  onPressRow,
 }: {
   history: NotificationHistoryEntry[];
   onClear: () => void;
+  onPressRow: (item: NotificationHistoryEntry) => void;
 }) {
   const now = Date.now();
   return (
@@ -467,16 +509,20 @@ function HistoryList({
             <Text style={styles.emptyText}>ยังไม่มีประวัติการแจ้งเตือน</Text>
           </View>
         }
-        renderItem={({ item }) => <HistoryRow item={item} now={now} />}
+        renderItem={({ item }) => <HistoryRow item={item} now={now} onPress={onPressRow} />}
       />
     </View>
   );
 }
 
-function HistoryRow({ item, now }: { item: NotificationHistoryEntry; now: number }) {
+function HistoryRow({ item, now, onPress }: { item: NotificationHistoryEntry; now: number; onPress: (item: NotificationHistoryEntry) => void }) {
   const icon = item.kind === "new-appointment" ? "🆕" : "🔄";
   return (
-    <View style={[styles.historyCard, !item.read && styles.historyCardUnread]}>
+    <TouchableOpacity
+      style={[styles.historyCard, !item.read && styles.historyCardUnread]}
+      onPress={() => onPress(item)}
+      activeOpacity={0.7}
+    >
       <Text style={styles.historyIcon}>{icon}</Text>
       <View style={styles.historyBody}>
         <Text style={styles.historyTitle}>{item.title}</Text>
@@ -484,7 +530,7 @@ function HistoryRow({ item, now }: { item: NotificationHistoryEntry; now: number
         <Text style={styles.historyTime}>{formatRelativeTime(item.timestamp, now)}</Text>
       </View>
       {!item.read && <View style={styles.unreadDot} />}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -647,6 +693,7 @@ const styles = StyleSheet.create({
   selectHint: { color: "#6b7280", fontSize: 12, flex: 1 },
   cardDisabled: { opacity: 0.45 },
   cardSelected: { borderWidth: 2, borderColor: "#16a34a" },
+  cardHighlight: { borderWidth: 2, borderColor: "#f59e0b", backgroundColor: "#fffbeb" },
   checkbox: {
     width: 26,
     height: 26,
