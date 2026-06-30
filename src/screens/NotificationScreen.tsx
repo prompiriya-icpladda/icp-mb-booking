@@ -207,12 +207,12 @@ export default function NotificationScreen({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{isLongTerm ? "นัดหมายระยะยาว" : "นัดหมายวันนี้"}</Text>
-        <Text style={styles.headerDate}>{isLongTerm ? "QR ที่ยังไม่หมดอายุ" : today}</Text>
+        <Text style={styles.headerTitle}>{isHistory ? "ประวัติการแจ้งเตือน" : isLongTerm ? "นัดหมายระยะยาว" : "นัดหมายวันนี้"}</Text>
+        <Text style={styles.headerDate}>{isHistory ? "ย้อนหลัง 7 วัน" : isLongTerm ? "QR ที่ยังไม่หมดอายุ" : today}</Text>
         <View style={styles.headerRow}>
-          {!loading && (
+          {(isHistory || !loading) && (
             <View style={styles.countBadge}>
-              <Text style={styles.countText}>{list.length} รายการ</Text>
+              <Text style={styles.countText}>{isHistory ? history.length : list.length} รายการ</Text>
             </View>
           )}
           {lastUpdated && (
