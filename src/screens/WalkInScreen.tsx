@@ -64,6 +64,7 @@ export default function WalkInScreen() {
     visitorOrganization: string;
     expiryDate: string;
   } | null>(null);
+  const [qrImageError, setQrImageError] = useState(false);
   const idInputRef = useRef<TextInput>(null);
   const cameraRef = useRef<CameraView>(null);
 
@@ -243,6 +244,7 @@ export default function WalkInScreen() {
         source: "mobile-walk-in",
       });
       if (qrMode === "long-term" && result.id) {
+        setQrImageError(false);
         setQrModal({
           id: result.id,
           visitorName: visitorName.trim(),
@@ -675,19 +677,25 @@ export default function WalkInScreen() {
         <View style={styles.qrModalBackdrop}>
           <View style={styles.qrModalCard}>
             <Text style={styles.qrModalTitle}>QR Code ระยะยาว</Text>
-            {qrModal && (
+            {qrModal && !qrImageError && (
               <Image
                 source={{ uri: visitorQrUrl(qrModal.id) }}
                 style={styles.qrImage}
                 resizeMode="contain"
+                onError={() => setQrImageError(true)}
               />
+            )}
+            {qrImageError && (
+              <View style={styles.qrImage}>
+                <Text style={styles.qrErrorText}>โหลด QR ไม่สำเร็จ</Text>
+              </View>
             )}
             <Text style={styles.qrName}>{qrModal?.visitorName}</Text>
             {!!qrModal?.visitorOrganization && (
               <Text style={styles.qrMeta}>{qrModal.visitorOrganization}</Text>
             )}
             {!!qrModal?.expiryDate && (
-              <Text style={styles.qrMeta}>หมดอายุ {qrModal.expiryDate}</Text>
+              <Text style={styles.qrMeta}>วันหมดอายุ {qrModal.expiryDate}</Text>
             )}
             <Text style={styles.qrNote}>
               ให้ผู้มาติดต่อแสดง QR นี้ที่จุดรักษาความปลอดภัยในครั้งถัดไป
@@ -973,6 +981,14 @@ const styles = StyleSheet.create({
   },
   qrModalTitle: { fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 16 },
   qrImage: { width: 220, height: 220, marginBottom: 16 },
+  qrErrorText: {
+    flex: 1,
+    textAlignVertical: "center",
+    textAlign: "center",
+    color: "#dc2626",
+    fontSize: 14,
+    fontWeight: "700",
+  },
   qrName: { fontSize: 16, fontWeight: "700", color: "#111827", textAlign: "center" },
   qrMeta: { fontSize: 13, color: "#6b7280", marginTop: 4, textAlign: "center" },
   qrNote: {
