@@ -1,4 +1,4 @@
-import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber } from "./api";
+import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, isLongTermCheckoutable } from "./api";
 
 describe("visitorTypeNeedsIdCard", () => {
   it("returns false for rider and merchant", () => {
@@ -60,5 +60,55 @@ describe("maskIdNumber - at rest (blurred)", () => {
     expect(maskIdNumber("1", false)).toBe("1");
     expect(maskIdNumber("17", false)).toBe("17");
     expect(maskIdNumber("173", false)).toBe("173");
+  });
+});
+
+describe("longTermStatus", () => {
+  it("returns 'registered' when never checked in", () => {
+    expect(longTermStatus({ checkedInAt: null, completedAt: null })).toBe("registered");
+  });
+  it("returns 'arrived' when checked in but not completed", () => {
+    expect(longTermStatus({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: null })).toBe("arrived");
+  });
+  it("returns 'checked-out' when completed (even if checkedInAt is set)", () => {
+    expect(
+      longTermStatus({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: "2026-06-30T05:00:00Z" }),
+    ).toBe("checked-out");
+  });
+  it("treats a missing completedAt as not checked out", () => {
+    expect(longTermStatus({ checkedInAt: "2026-06-30T01:00:00Z" })).toBe("arrived");
+  });
+});
+
+describe("isLongTermCheckoutable", () => {
+  it("allows a merchant who has arrived", () => {
+    expect(
+      isLongTermCheckoutable({ visitorType: "merchant", checkedInAt: "2026-06-30T01:00:00Z", completedAt: null }),
+    ).toBe(true);
+  });
+  it("allows a rider who has arrived", () => {
+    expect(
+      isLongTermCheckoutable({ visitorType: "rider", checkedInAt: "2026-06-30T01:00:00Z", completedAt: null }),
+    ).toBe(true);
+  });
+  it("rejects a merchant who only registered (not arrived)", () => {
+    expect(
+      isLongTermCheckoutable({ visitorType: "merchant", checkedInAt: null, completedAt: null }),
+    ).toBe(false);
+  });
+  it("rejects a merchant already checked out", () => {
+    expect(
+      isLongTermCheckoutable({ visitorType: "merchant", checkedInAt: "2026-06-30T01:00:00Z", completedAt: "2026-06-30T05:00:00Z" }),
+    ).toBe(false);
+  });
+  it("rejects a host-type visitor even when arrived", () => {
+    expect(
+      isLongTermCheckoutable({ visitorType: "visitor", checkedInAt: "2026-06-30T01:00:00Z", completedAt: null }),
+    ).toBe(false);
+  });
+  it("rejects when visitorType is missing", () => {
+    expect(
+      isLongTermCheckoutable({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: null }),
+    ).toBe(false);
   });
 });

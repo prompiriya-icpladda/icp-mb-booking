@@ -83,6 +83,29 @@ export interface TodayAppointment {
   visitorCount: number;
   createdByName: string;
   qrMode?: VisitorQrMode;
+  completedAt?: string | null;
+  visitorType?: VisitorType;
+}
+
+export type LongTermStatus = "registered" | "arrived" | "checked-out";
+
+// อนุมานสถานะ long-term จาก timestamp ที่ server คืนมา (completedAt ชนะ checkedInAt)
+export function longTermStatus(
+  a: Pick<TodayAppointment, "checkedInAt" | "completedAt">,
+): LongTermStatus {
+  if (a.completedAt) return "checked-out";
+  if (a.checkedInAt) return "arrived";
+  return "registered";
+}
+
+// เลือกเช็คเอาท์ในแอปได้เฉพาะ rider/แม่ค้า (ไม่มี host) ที่สถานะ "มาแล้ว"
+export function isLongTermCheckoutable(
+  a: Pick<TodayAppointment, "checkedInAt" | "completedAt" | "visitorType">,
+): boolean {
+  return (
+    (a.visitorType === "rider" || a.visitorType === "merchant") &&
+    longTermStatus(a) === "arrived"
+  );
 }
 
 export async function getTodayAppointments(): Promise<TodayAppointment[]> {
