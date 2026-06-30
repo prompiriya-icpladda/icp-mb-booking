@@ -98,9 +98,9 @@ export function maskIdNumber(raw: string, focused: boolean): string {
   1734         → 17x4
   17345        → 17xx5
   173456       → 17xxx6
-  … ครบ 13     → 17xxxxxxxxx9
+  … ครบ 13     → 17xxxxxxxxxx9   (focus: โชว์หลักล่าสุดตัวเดียว → x 10 ตัว)
 ออกจากช่อง (blur) / ครบ:
-  1734…39      → 17xxxxxxxxx39
+  1734…39      → 17xxxxxxxxx39   (blur: โชว์ 2 หน้า + 2 ท้าย → x 9 ตัว)
 ```
 
 การต่อ display เข้ากับ TextInput (เก็บ raw แยกจาก display):
