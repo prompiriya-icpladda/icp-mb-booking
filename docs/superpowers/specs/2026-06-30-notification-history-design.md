@@ -95,7 +95,7 @@ interface NotificationHistoryEntry {
 
 **แตะรายการ (navigate to related)**
 - ถ้า `appointmentId` มี และเจอใน `todayAppointments`/`longTermAppointments` (ตาม `tab` หรือค้นทั้งคู่):
-  - `setActiveTab(tab)` แล้วตั้ง `highlightId` → การ์ดเป้าหมายไฮไลต์ (border เขียว) ~2 วินาที แล้วล้าง
+  - `setActiveTab(tab)` แล้วตั้ง `highlightId` → การ์ดเป้าหมายไฮไลต์ (border เหลืองอำพัน `#f59e0b` — แยกจากสีเขียวของการ์ดที่ถูกเลือก) ~2.5 วินาที แล้วล้าง
   - best-effort scroll ไปการ์ดนั้น (FlatList ref + scrollToIndex; ล้มเหลวก็ไม่เป็นไร)
 - ถ้าไม่พบ (เช็คเอาท์ไป/คนละวันแล้ว): `setActiveTab(tab ?? "normal")` + `Alert` "ไม่พบนัดหมายนี้ในรายการแล้ว"
 - entry แบบ update (ไม่มี id): สลับไปแท็บ "ปกติ" เฉยๆ
