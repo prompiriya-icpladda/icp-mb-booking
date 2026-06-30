@@ -55,6 +55,11 @@ export async function checkinAppointment(id: string): Promise<CheckinResult> {
   return res.json();
 }
 
+// สแกนซ้ำ rider/แม่ค้า ที่ยัง "มาแล้ว" (ยังเช็คเอาท์ได้) → ให้เด้งไปหน้าเช็คเอาท์
+export function shouldRouteToCheckout(res: CheckinResult): boolean {
+  return !!(res.success && res.alreadyCheckedIn && res.canCheckout);
+}
+
 // URL ของรูป QR (PNG) ที่ server สร้างให้ — ใช้แสดงในแอปหลังบันทึกนัดหมายระยะยาว
 export function visitorQrUrl(id: string): string {
   return `${API_URL}/visitor-appointments/${id}/qr`;

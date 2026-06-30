@@ -1,4 +1,4 @@
-import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, isLongTermCheckoutable, longTermCardAction } from "./api";
+import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, isLongTermCheckoutable, longTermCardAction, shouldRouteToCheckout } from "./api";
 
 describe("visitorTypeNeedsIdCard", () => {
   it("returns false for rider and merchant", () => {
@@ -137,5 +137,31 @@ describe("longTermCardAction", () => {
 
   it("returns 'scan' for a host-type visitor even when arrived", () => {
     expect(longTermCardAction({ visitorType: "visitor", checkedInAt: "2026-06-30T01:00:00Z", completedAt: null }, false)).toBe("scan");
+  });
+});
+
+describe("shouldRouteToCheckout", () => {
+  it("returns true for a re-scanned rider/merchant that can still check out", () => {
+    expect(
+      shouldRouteToCheckout({ success: true, alreadyCheckedIn: true, canCheckout: true }),
+    ).toBe(true);
+  });
+  it("returns false on first check-in (not a re-scan)", () => {
+    expect(
+      shouldRouteToCheckout({ success: true, alreadyCheckedIn: false, canCheckout: true }),
+    ).toBe(false);
+  });
+  it("returns false when the visitor cannot be checked out (e.g. host re-scan)", () => {
+    expect(
+      shouldRouteToCheckout({ success: true, alreadyCheckedIn: true, canCheckout: false }),
+    ).toBe(false);
+  });
+  it("returns false when the check-in was not successful", () => {
+    expect(
+      shouldRouteToCheckout({ success: false, alreadyCheckedIn: true, canCheckout: true }),
+    ).toBe(false);
+  });
+  it("returns false for an empty result", () => {
+    expect(shouldRouteToCheckout({})).toBe(false);
   });
 });
