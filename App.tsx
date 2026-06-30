@@ -15,15 +15,18 @@ import {
   startAppUpdateChecks,
   stopAppUpdateChecks,
 } from "./src/utils/updateService";
+import { getUnreadCount, subscribe } from "./src/utils/notificationHistory";
 
 type Tab = "notification" | "scanner" | "walkIn";
 
 function TabBar({
   active,
   onSelect,
+  unread,
 }: {
   active: Tab;
   onSelect: (t: Tab) => void;
+  unread: number;
 }) {
   return (
     <View style={styles.tabBar}>
@@ -32,7 +35,14 @@ function TabBar({
         onPress={() => onSelect("notification")}
         activeOpacity={0.7}
       >
-        <Text style={styles.tabIcon}>🔔</Text>
+        <View>
+          <Text style={styles.tabIcon}>🔔</Text>
+          {unread > 0 && (
+            <View style={styles.tabBarBadge}>
+              <Text style={styles.tabBarBadgeText}>{unread > 99 ? "99+" : unread}</Text>
+            </View>
+          )}
+        </View>
         <Text
           style={[
             styles.tabLabel,
@@ -80,6 +90,12 @@ function MainApp() {
   const [activeTab, setActiveTab] = useState<Tab>("notification");
   const [fromNotification, setFromNotification] = useState(false);
   const [checkoutTargetId, setCheckoutTargetId] = useState<string | null>(null);
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    const refresh = () => setUnread(getUnreadCount());
+    refresh();
+    return subscribe(refresh);
+  }, []);
 
   function handleScanRequest() {
     setFromNotification(true);
@@ -120,7 +136,7 @@ function MainApp() {
           <WalkInScreen />
         )}
       </View>
-      <TabBar active={activeTab} onSelect={handleTabSelect} />
+      <TabBar active={activeTab} onSelect={handleTabSelect} unread={unread} />
     </View>
   );
 }
@@ -161,4 +177,16 @@ const styles = StyleSheet.create({
   tabIcon: { fontSize: 20 },
   tabLabel: { color: "#6b7280", fontSize: 11, marginTop: 2 },
   tabLabelActive: { color: "#4ade80" },
+  tabBarBadge: {
+    position: "absolute",
+    top: -4,
+    right: -10,
+    backgroundColor: "#dc2626",
+    borderRadius: 99,
+    minWidth: 16,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    alignItems: "center",
+  },
+  tabBarBadgeText: { color: "#fff", fontSize: 9, fontWeight: "700" },
 });
