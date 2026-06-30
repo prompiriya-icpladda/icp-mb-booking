@@ -18,9 +18,12 @@ import {
 } from "react-native";
 import {
   createWalkInVisit,
+  EXPIRY_PRESET_OPTIONS,
+  ExpiryPreset,
   HrEmployee,
   maskIdNumber,
   ocrLicensePlate,
+  presetExpiryDate,
   searchHrEmployees,
   visitorQrUrl,
   VISITOR_TYPE_OPTIONS,
@@ -45,6 +48,7 @@ export default function WalkInScreen() {
   const [qrMode, setQrMode] = useState<VisitorQrMode>("single-use");
   const [expiryDate, setExpiryDate] = useState<Date | null>(null);
   const [showExpiryPicker, setShowExpiryPicker] = useState(false);
+  const [expiryPreset, setExpiryPreset] = useState<ExpiryPreset>("1m");
   const [hostQuery, setHostQuery] = useState("");
   const [hostResults, setHostResults] = useState<HrEmployee[]>([]);
   const [selectedHost, setSelectedHost] = useState<HrEmployee | null>(null);
@@ -123,6 +127,7 @@ export default function WalkInScreen() {
     setVisitorCount(1);
     setQrMode("single-use");
     setExpiryDate(null);
+    setExpiryPreset("1m");
     setShowExpiryPicker(false);
     setHostQuery("");
     setSelectedHost(null);
@@ -140,6 +145,16 @@ export default function WalkInScreen() {
     setVisitorType(next);
     if (!visitorTypeNeedsIdCard(next)) setIdCardNumber("");
     if (!visitorTypeNeedsCompany(next)) setCompanyName("");
+  }
+
+  function handleExpiryPreset(preset: ExpiryPreset) {
+    setExpiryPreset(preset);
+    if (preset === "custom") {
+      setShowExpiryPicker(true);
+    } else {
+      setShowExpiryPicker(false);
+      setExpiryDate(presetExpiryDate(preset));
+    }
   }
 
   function handleIdChange(text: string) {
@@ -505,7 +520,7 @@ export default function WalkInScreen() {
               label="ระยะยาว"
               onPress={() => {
                 setQrMode("long-term");
-                setExpiryDate((prev) => prev ?? defaultExpiryDate());
+                setExpiryDate((prev) => prev ?? presetExpiryDate("1m")!);
               }}
             />
           </View>
@@ -516,38 +531,73 @@ export default function WalkInScreen() {
 
         {qrMode === "long-term" && (
           <Field label="วันหมดอายุ">
-            <TouchableOpacity
-              style={[styles.input, styles.dateInput]}
-              onPress={() => setShowExpiryPicker(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={expiryDate ? styles.dateText : styles.datePlaceholder}>
-                {expiryDate ? formatDateLocal(expiryDate) : "เลือกวันหมดอายุ"}
-              </Text>
-            </TouchableOpacity>
-            {showExpiryPicker && (
-              <DateTimePicker
-                value={expiryDate ?? defaultExpiryDate()}
-                mode="date"
-                display={Platform.OS === "ios" ? "inline" : "default"}
-                minimumDate={new Date()}
-                onChange={(event, selected) => {
-                  if (Platform.OS !== "ios") setShowExpiryPicker(false);
-                  if (event.type === "set" && selected) {
-                    setExpiryDate(selected);
-                  } else if (event.type === "dismissed") {
-                    setShowExpiryPicker(false);
-                  }
-                }}
-              />
-            )}
-            {Platform.OS === "ios" && showExpiryPicker && (
-              <TouchableOpacity
-                style={styles.dateDoneBtn}
-                onPress={() => setShowExpiryPicker(false)}
-              >
-                <Text style={styles.dateDoneText}>เสร็จ</Text>
-              </TouchableOpacity>
+            <View style={styles.typeRow}>
+              {EXPIRY_PRESET_OPTIONS.map((option) => {
+                const active = expiryPreset === option.value;
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[styles.typeChip, active && styles.typeChipActive]}
+                    onPress={() => handleExpiryPreset(option.value)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.typeChipText,
+                        active && styles.typeChipTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {expiryPreset === "custom" ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.input, styles.dateInput]}
+                  onPress={() => setShowExpiryPicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={expiryDate ? styles.dateText : styles.datePlaceholder}
+                  >
+                    {expiryDate ? formatDateLocal(expiryDate) : "เลือกวันหมดอายุ"}
+                  </Text>
+                </TouchableOpacity>
+                {showExpiryPicker && (
+                  <DateTimePicker
+                    value={expiryDate ?? presetExpiryDate("1m")!}
+                    mode="date"
+                    display={Platform.OS === "ios" ? "inline" : "default"}
+                    minimumDate={new Date()}
+                    onChange={(event, selected) => {
+                      if (Platform.OS !== "ios") setShowExpiryPicker(false);
+                      if (event.type === "set" && selected) {
+                        setExpiryDate(selected);
+                      } else if (event.type === "dismissed") {
+                        setShowExpiryPicker(false);
+                      }
+                    }}
+                  />
+                )}
+                {Platform.OS === "ios" && showExpiryPicker && (
+                  <TouchableOpacity
+                    style={styles.dateDoneBtn}
+                    onPress={() => setShowExpiryPicker(false)}
+                  >
+                    <Text style={styles.dateDoneText}>เสร็จ</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : (
+              expiryDate && (
+                <Text style={styles.helperText}>
+                  หมดอายุ {formatDateLocal(expiryDate)}
+                </Text>
+              )
             )}
           </Field>
         )}
@@ -781,12 +831,6 @@ function formatDateLocal(d: Date) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function defaultExpiryDate() {
-  const d = new Date();
-  d.setMonth(d.getMonth() + 1);
-  return d;
 }
 
 function formatEmployeeName(employee: HrEmployee) {
