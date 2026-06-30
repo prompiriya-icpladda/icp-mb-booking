@@ -19,6 +19,7 @@ import {
 import {
   createWalkInVisit,
   HrEmployee,
+  maskIdNumber,
   ocrLicensePlate,
   searchHrEmployees,
   visitorQrUrl,
@@ -37,6 +38,7 @@ export default function WalkInScreen() {
   const [visitorName, setVisitorName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [idCardNumber, setIdCardNumber] = useState("");
+  const [idFocused, setIdFocused] = useState(false);
   const [purpose, setPurpose] = useState("");
   const [visitorType, setVisitorType] = useState<VisitorType>("visitor");
   const [visitorCount, setVisitorCount] = useState(1);
@@ -138,6 +140,17 @@ export default function WalkInScreen() {
     setVisitorType(next);
     if (!visitorTypeNeedsIdCard(next)) setIdCardNumber("");
     if (!visitorTypeNeedsCompany(next)) setCompanyName("");
+  }
+
+  function handleIdChange(text: string) {
+    // display ยาวเท่า raw (1 หลัก = 1 ตัวอักษร) จึง diff ความยาวเพื่อถอดกลับเป็นเลขจริง
+    const prevDisplay = maskIdNumber(idCardNumber, true);
+    if (text.length > prevDisplay.length) {
+      const added = text.slice(prevDisplay.length).replace(/[^0-9]/g, "");
+      setIdCardNumber((idCardNumber + added).slice(0, 13));
+    } else if (text.length < prevDisplay.length) {
+      setIdCardNumber(idCardNumber.slice(0, text.length));
+    }
   }
 
   function pickHost(employee: HrEmployee) {
@@ -393,8 +406,10 @@ export default function WalkInScreen() {
             <TextInput
               ref={idInputRef}
               style={styles.input}
-              value={idCardNumber}
-              onChangeText={(v) => setIdCardNumber(v.replace(/[^0-9]/g, ""))}
+              value={maskIdNumber(idCardNumber, idFocused)}
+              onChangeText={handleIdChange}
+              onFocus={() => setIdFocused(true)}
+              onBlur={() => setIdFocused(false)}
               placeholder="กรอกรหัสบัตรประชาชน"
               placeholderTextColor="#9ca3af"
               keyboardType="number-pad"
