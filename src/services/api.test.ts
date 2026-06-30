@@ -21,6 +21,8 @@ describe("visitorTypeNeedsCompany", () => {
     expect(visitorTypeNeedsCompany("rider")).toBe(true);
     expect(visitorTypeNeedsCompany("visitor")).toBe(true);
     expect(visitorTypeNeedsCompany("supplier")).toBe(true);
+    expect(visitorTypeNeedsCompany("customer")).toBe(true);
+    expect(visitorTypeNeedsCompany("vendor")).toBe(true);
   });
 });
 
@@ -53,5 +55,10 @@ describe("maskIdNumber - at rest (blurred)", () => {
   it("returns empty string for empty input", () => {
     expect(maskIdNumber("", false)).toBe("");
     expect(maskIdNumber("", true)).toBe("");
+  });
+  it("shows everything for raw lengths 1 to 3 (nothing to mask)", () => {
+    expect(maskIdNumber("1", false)).toBe("1");
+    expect(maskIdNumber("17", false)).toBe("17");
+    expect(maskIdNumber("173", false)).toBe("173");
   });
 });
