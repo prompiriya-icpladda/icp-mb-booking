@@ -303,6 +303,34 @@ export function visitorTypeNeedsHost(visitorType: VisitorType): boolean {
   return visitorType !== "rider" && visitorType !== "merchant";
 }
 
+// บัตรประชาชน: ไม่ต้องใช้สำหรับ rider / merchant (แม่ค้า)
+export function visitorTypeNeedsIdCard(visitorType: VisitorType): boolean {
+  return visitorType !== "rider" && visitorType !== "merchant";
+}
+
+// ชื่อบริษัท: ไม่ต้องใช้สำหรับ merchant (แม่ค้า)
+export function visitorTypeNeedsCompany(visitorType: VisitorType): boolean {
+  return visitorType !== "merchant";
+}
+
+// แสดงผลเลขบัตรประชาชนแบบปิดบัง (เก็บ/ส่งเลขเต็ม ปิดบังเฉพาะตอนแสดง)
+//  - 2 หลักหน้าโชว์เสมอ
+//  - focused (กำลังพิมพ์): โชว์เฉพาะหลักล่าสุด ที่เหลือกลางเป็น x
+//  - blurred (ออกจากช่อง/ครบ): โชว์ 2 หลักหน้า + 2 หลักท้าย
+export function maskIdNumber(raw: string, focused: boolean): string {
+  const n = raw.length;
+  if (n === 0) return "";
+  return raw
+    .split("")
+    .map((char, i) => {
+      const isFirstTwo = i < 2;
+      const revealLastTyped = focused && i === n - 1;
+      const revealLastTwo = !focused && i >= n - 2;
+      return isFirstTwo || revealLastTyped || revealLastTwo ? char : "x";
+    })
+    .join("");
+}
+
 export interface CreateWalkInVisitPayload {
   visitorName: string;
   hostEmployeeCode: string;
