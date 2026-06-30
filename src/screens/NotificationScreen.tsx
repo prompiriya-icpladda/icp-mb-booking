@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { getActiveLongTermAppointments, TodayAppointment } from "../services/api";
+import { getActiveLongTermAppointments, longTermStatus, LongTermStatus, TodayAppointment } from "../services/api";
 import { checkAndNotify, notifyNow } from "../utils/notificationService";
 import { useAppointmentStream } from "../utils/useAppointmentStream";
 
@@ -162,6 +162,7 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
 function AppointmentCard({ item, onScanRequest }: { item: TodayAppointment; onScanRequest?: () => void }) {
   const isLongTerm = item.qrMode === "long-term";
   const checkedIn = !!item.checkedInAt;
+  const ltStatus = longTermStatus(item);
   // ระยะยาวสแกนซ้ำได้เสมอ → แตะเพื่อสแกนได้ตลอด; ปกติแตะได้เฉพาะที่ยังไม่เช็คอิน
   const tappable = !!onScanRequest && (isLongTerm || !checkedIn);
   const Wrapper = tappable ? TouchableOpacity : View;
@@ -176,8 +177,8 @@ function AppointmentCard({ item, onScanRequest }: { item: TodayAppointment; onSc
           <Text style={styles.organization}>{item.visitorOrganization}</Text>
         </View>
         {isLongTerm ? (
-          <View style={[styles.statusBadge, styles.statusLongTerm]}>
-            <Text style={[styles.statusText, styles.statusLongTermText]}>ระยะยาว</Text>
+          <View style={[styles.statusBadge, longTermBadgeStyle(ltStatus)]}>
+            <Text style={[styles.statusText, longTermTextStyle(ltStatus)]}>{longTermLabel(ltStatus)}</Text>
           </View>
         ) : (
           <View style={[styles.statusBadge, checkedIn ? styles.statusChecked : styles.statusPending]}>
@@ -216,6 +217,26 @@ function Pill({ icon, text }: { icon: string; text: string }) {
       <Text style={styles.pillText}>{text}</Text>
     </View>
   );
+}
+
+function longTermLabel(s: LongTermStatus) {
+  return s === "registered" ? "ลงทะเบียน" : s === "arrived" ? "มาแล้ว" : "เช็คเอาท์";
+}
+
+function longTermBadgeStyle(s: LongTermStatus) {
+  return s === "registered"
+    ? styles.statusPending
+    : s === "arrived"
+      ? styles.statusChecked
+      : styles.statusCheckedOut;
+}
+
+function longTermTextStyle(s: LongTermStatus) {
+  return s === "registered"
+    ? styles.statusPendingText
+    : s === "arrived"
+      ? styles.statusCheckedText
+      : styles.statusCheckedOutText;
 }
 
 const styles = StyleSheet.create({
@@ -300,10 +321,12 @@ const styles = StyleSheet.create({
   statusChecked: { backgroundColor: "#dcfce7" },
   statusPending: { backgroundColor: "#f3f4f6" },
   statusLongTerm: { backgroundColor: "#dbeafe" },
+  statusCheckedOut: { backgroundColor: "#e5e7eb" },
   statusText: { fontSize: 11, fontWeight: "600" },
   statusCheckedText: { color: "#16a34a" },
   statusPendingText: { color: "#6b7280" },
   statusLongTermText: { color: "#2563eb" },
+  statusCheckedOutText: { color: "#374151" },
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
   pill: {
     flexDirection: "row",
