@@ -2,18 +2,13 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import {
-  checkinAppointment,
-  checkoutAppointment,
-  CheckinResult,
-} from "../services/api";
+import { checkinAppointment, CheckinResult } from "../services/api";
 
 type ScanState = "scanning" | "loading" | "result";
 
@@ -30,9 +25,6 @@ export default function ScannerScreen({ onBack }: { onBack?: () => void }) {
   const [scanState, setScanState] = useState<ScanState>("scanning");
   const [result, setResult] = useState<ResultDisplay | null>(null);
   const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
-  const [scannedId, setScannedId] = useState<string | null>(null);
-  const [checkingOut, setCheckingOut] = useState(false);
-  const [departed, setDeparted] = useState(false);
   const processingRef = useRef(false);
 
   function extractAppointmentId(data: string): string | null {
@@ -48,7 +40,6 @@ export default function ScannerScreen({ onBack }: { onBack?: () => void }) {
     if (!id) return;
 
     processingRef.current = true;
-    setScannedId(id);
     setScanState("loading");
     try {
       const res = await checkinAppointment(id);
@@ -80,32 +71,9 @@ export default function ScannerScreen({ onBack }: { onBack?: () => void }) {
     setScanState("result");
   }
 
-  async function handleCheckout() {
-    if (!scannedId || checkingOut) return;
-    setCheckingOut(true);
-    try {
-      const res = await checkoutAppointment(scannedId);
-      if (res.success) {
-        setDeparted(true);
-      } else {
-        Alert.alert("ไม่สำเร็จ", res.error || "บันทึกการออกไม่สำเร็จ");
-      }
-    } catch (e) {
-      Alert.alert(
-        "ไม่สำเร็จ",
-        e instanceof Error ? e.message : "บันทึกการออกไม่สำเร็จ",
-      );
-    } finally {
-      setCheckingOut(false);
-    }
-  }
-
   function resetScan() {
     processingRef.current = false;
     setResult(null);
-    setScannedId(null);
-    setCheckingOut(false);
-    setDeparted(false);
     setScanState("scanning");
   }
 
@@ -174,24 +142,6 @@ export default function ScannerScreen({ onBack }: { onBack?: () => void }) {
             {result?.errorMsg && (
               <Text style={styles.errorMsg}>{result.errorMsg}</Text>
             )}
-            {result?.data?.canCheckout &&
-              (departed ? (
-                <View style={styles.departedBadge}>
-                  <Text style={styles.departedText}>✅ บันทึกว่าไปแล้ว</Text>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.checkoutBtn, checkingOut && styles.btnDisabled]}
-                  onPress={handleCheckout}
-                  disabled={checkingOut}
-                >
-                  {checkingOut ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.btnText}>🚪 ไปแล้ว (สแกนออก)</Text>
-                  )}
-                </TouchableOpacity>
-              ))}
             {onBack ? (
               <TouchableOpacity style={styles.btn} onPress={onBack}>
                 <Text style={styles.btnText}>กลับไปหน้าแจ้งเตือน</Text>
@@ -269,26 +219,6 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   btnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  btnDisabled: { opacity: 0.6 },
-  checkoutBtn: {
-    backgroundColor: "#ea580c",
-    paddingHorizontal: 32,
-    paddingVertical: 13,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 12,
-    width: "100%",
-  },
-  departedBadge: {
-    backgroundColor: "#fef3c7",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 12,
-    width: "100%",
-  },
-  departedText: { color: "#b45309", fontWeight: "700", fontSize: 15 },
   modalBg: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
