@@ -23,7 +23,9 @@ import {
   searchHrEmployees,
   visitorQrUrl,
   VISITOR_TYPE_OPTIONS,
+  visitorTypeNeedsCompany,
   visitorTypeNeedsHost,
+  visitorTypeNeedsIdCard,
   VisitorQrMode,
   VisitorType,
 } from "../services/api";
@@ -70,6 +72,8 @@ export default function WalkInScreen() {
 
   // rider / แม่ค้า มาขายของ ไม่ต้องเลือกผู้ที่ต้องการพบ
   const hostRequired = visitorTypeNeedsHost(visitorType);
+  const idVisible = visitorTypeNeedsIdCard(visitorType);
+  const companyVisible = visitorTypeNeedsCompany(visitorType);
 
   useEffect(() => {
     const query = hostQuery.trim();
@@ -130,6 +134,12 @@ export default function WalkInScreen() {
     setVisitorCount(Math.max(1, Math.floor(nextCount || 0)));
   }
 
+  function handleVisitorTypeChange(next: VisitorType) {
+    setVisitorType(next);
+    if (!visitorTypeNeedsIdCard(next)) setIdCardNumber("");
+    if (!visitorTypeNeedsCompany(next)) setCompanyName("");
+  }
+
   function pickHost(employee: HrEmployee) {
     setSelectedHost(employee);
     setHostQuery(formatEmployeeName(employee));
@@ -172,8 +182,8 @@ export default function WalkInScreen() {
   function validate(host: HrEmployee | null) {
     if (!visitorName.trim()) return "กรุณากรอกชื่อผู้มาติดต่อ";
     if (hostRequired && !host) return "กรุณาเลือกผู้ที่ต้องการพบจาก HR";
-    if (!idCardNumber.trim()) return "กรุณากรอกรหัสบัตรประชาชน";
-    if (!companyName.trim()) return "กรุณากรอกชื่อบริษัท";
+    if (idVisible && !idCardNumber.trim()) return "กรุณากรอกรหัสบัตรประชาชน";
+    if (companyVisible && !companyName.trim()) return "กรุณากรอกชื่อบริษัท";
     if (qrMode === "long-term" && !expiryDate) return "กรุณาเลือกวันหมดอายุ";
     if (hasVehicle) {
       if (vehicleCount < 1) return "กรุณาระบุจำนวนรถ";
@@ -227,8 +237,8 @@ export default function WalkInScreen() {
         visitingUserId: hostUserId,
         visitingUserName: host?.name ?? "",
         visitingUserNickname: host?.nickname,
-        idCardNumber: idCardNumber.trim(),
-        companyName: companyName.trim(),
+        idCardNumber: idVisible ? idCardNumber.trim() : "",
+        companyName: companyVisible ? companyName.trim() : "",
         purpose: purpose.trim(),
         visitorType,
         visitorCount,
@@ -248,7 +258,7 @@ export default function WalkInScreen() {
         setQrModal({
           id: result.id,
           visitorName: visitorName.trim(),
-          visitorOrganization: companyName.trim(),
+          visitorOrganization: companyVisible ? companyName.trim() : "",
           expiryDate: expiryDate ? formatDateLocal(expiryDate) : "",
         });
         resetForm();
@@ -378,28 +388,32 @@ export default function WalkInScreen() {
           </Field>
         )}
 
-        <Field label="รหัสบัตรประชาชน">
-          <TextInput
-            ref={idInputRef}
-            style={styles.input}
-            value={idCardNumber}
-            onChangeText={(v) => setIdCardNumber(v.replace(/[^0-9]/g, ""))}
-            placeholder="กรอกรหัสบัตรประชาชน"
-            placeholderTextColor="#9ca3af"
-            keyboardType="number-pad"
-            maxLength={13}
-          />
-        </Field>
+        {idVisible && (
+          <Field label="รหัสบัตรประชาชน">
+            <TextInput
+              ref={idInputRef}
+              style={styles.input}
+              value={idCardNumber}
+              onChangeText={(v) => setIdCardNumber(v.replace(/[^0-9]/g, ""))}
+              placeholder="กรอกรหัสบัตรประชาชน"
+              placeholderTextColor="#9ca3af"
+              keyboardType="number-pad"
+              maxLength={13}
+            />
+          </Field>
+        )}
 
-        <Field label="ชื่อบริษัท">
-          <TextInput
-            style={styles.input}
-            value={companyName}
-            onChangeText={setCompanyName}
-            placeholder="ชื่อบริษัท"
-            placeholderTextColor="#9ca3af"
-          />
-        </Field>
+        {companyVisible && (
+          <Field label="ชื่อบริษัท">
+            <TextInput
+              style={styles.input}
+              value={companyName}
+              onChangeText={setCompanyName}
+              placeholder="ชื่อบริษัท"
+              placeholderTextColor="#9ca3af"
+            />
+          </Field>
+        )}
 
         <Field label="จุดประสงค์การมาติดต่อ">
           <TextInput
@@ -421,7 +435,7 @@ export default function WalkInScreen() {
                 <TouchableOpacity
                   key={option.value}
                   style={[styles.typeChip, active && styles.typeChipActive]}
-                  onPress={() => setVisitorType(option.value)}
+                  onPress={() => handleVisitorTypeChange(option.value)}
                   activeOpacity={0.8}
                 >
                   <Text
