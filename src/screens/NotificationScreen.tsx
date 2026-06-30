@@ -14,10 +14,12 @@ import { checkoutAppointment, getActiveLongTermAppointments, isLongTermCheckouta
 import { checkAndNotify, notifyNow } from "../utils/notificationService";
 import { useAppointmentStream } from "../utils/useAppointmentStream";
 import LongTermDetailScreen from "./LongTermDetailScreen";
+import { clearHistory, getHistory, getUnreadCount, markAllRead, subscribe } from "../utils/notificationHistory";
+import { formatRelativeTime, NotificationHistoryEntry } from "../utils/notificationHistory.logic";
 
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 นาที
 
-type AppointmentTab = "normal" | "longTerm";
+type AppointmentTab = "normal" | "longTerm" | "history";
 
 export default function NotificationScreen({
   onScanRequest,
@@ -41,6 +43,8 @@ export default function NotificationScreen({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [checkingOut, setCheckingOut] = useState(false);
   const [detailItem, setDetailItem] = useState<TodayAppointment | null>(null);
+  const [history, setHistory] = useState<NotificationHistoryEntry[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [pendingCheckoutId, setPendingCheckoutId] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -74,6 +78,16 @@ export default function NotificationScreen({
     };
   }, [fetchAppointments]);
 
+  useEffect(() => {
+    const refresh = () => {
+      getHistory().then(setHistory);
+      setUnreadCount(getUnreadCount());
+    };
+    refresh();
+    const unsub = subscribe(refresh);
+    return unsub;
+  }, []);
+
   // รับแจ้งเตือนทันทีเมื่อมีการเปลี่ยนแปลงจาก server (SSE)
   useAppointmentStream(useCallback(() => {
     notifyNow("🔔 มีการอัปเดตนัดหมาย", "กรุณาตรวจสอบรายการนัดหมาย").catch(() => {});
@@ -82,6 +96,9 @@ export default function NotificationScreen({
 
   useEffect(() => {
     exitSelectMode();
+    if (activeTab === "history") {
+      markAllRead();
+    }
   }, [activeTab]);
 
   // รับ id จากการสแกนซ้ำ → สลับไปแท็บระยะยาว ตั้ง pending แล้วเคลียร์ฝั่ง App (กัน re-trigger ตอน remount)
@@ -151,6 +168,7 @@ export default function NotificationScreen({
   });
 
   const isLongTerm = activeTab === "longTerm";
+  const isHistory = activeTab === "history";
   const list = isLongTerm ? longTermAppointments : todayAppointments;
 
   return (
@@ -175,11 +193,11 @@ export default function NotificationScreen({
       {/* ── แท็บสลับ ปกติ / ระยะยาว ── */}
       <View style={styles.tabRow}>
         <TouchableOpacity
-          style={[styles.tabBtn, !isLongTerm && styles.tabBtnActive]}
+          style={[styles.tabBtn, activeTab === "normal" && styles.tabBtnActive]}
           onPress={() => setActiveTab("normal")}
           activeOpacity={0.8}
         >
-          <Text style={[styles.tabBtnText, !isLongTerm && styles.tabBtnTextActive]}>
+          <Text style={[styles.tabBtnText, activeTab === "normal" && styles.tabBtnTextActive]}>
             นัดหมายปกติ ({todayAppointments.length})
           </Text>
         </TouchableOpacity>
@@ -191,6 +209,22 @@ export default function NotificationScreen({
           <Text style={[styles.tabBtnText, isLongTerm && styles.tabBtnTextActive]}>
             ระยะยาว ({longTermAppointments.length})
           </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === "history" && styles.tabBtnActive]}
+          onPress={() => setActiveTab("history")}
+          activeOpacity={0.8}
+        >
+          <View style={styles.tabLabelWrap}>
+            <Text style={[styles.tabBtnText, activeTab === "history" && styles.tabBtnTextActive]}>
+              ประวัติ
+            </Text>
+            {unreadCount > 0 && (
+              <View style={styles.tabBadge}>
+                <Text style={styles.tabBadgeText}>{unreadCount > 99 ? "99+" : unreadCount}</Text>
+              </View>
+            )}
+          </View>
         </TouchableOpacity>
       </View>
 
@@ -211,7 +245,17 @@ export default function NotificationScreen({
         </View>
       )}
 
-      {loading ? (
+      {isHistory ? (
+        <HistoryList
+          history={history}
+          onClear={() => {
+            Alert.alert("ล้างประวัติทั้งหมด", "ต้องการลบประวัติการแจ้งเตือนทั้งหมดหรือไม่?", [
+              { text: "ยกเลิก", style: "cancel" },
+              { text: "ล้าง", style: "destructive", onPress: () => clearHistory() },
+            ]);
+          }}
+        />
+      ) : loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#16a34a" />
         </View>
@@ -393,6 +437,54 @@ function AppointmentCard({
         )}
       </View>
     </Wrapper>
+  );
+}
+
+function HistoryList({
+  history,
+  onClear,
+}: {
+  history: NotificationHistoryEntry[];
+  onClear: () => void;
+}) {
+  const now = Date.now();
+  return (
+    <View style={styles.historyWrap}>
+      {history.length > 0 && (
+        <View style={styles.historyBar}>
+          <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={0.8}>
+            <Text style={styles.clearBtnText}>ล้างประวัติทั้งหมด</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      <FlatList
+        data={history}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={history.length === 0 ? styles.emptyContainer : styles.listContent}
+        ListEmptyComponent={
+          <View style={styles.center}>
+            <Text style={styles.emptyIcon}>🔕</Text>
+            <Text style={styles.emptyText}>ยังไม่มีประวัติการแจ้งเตือน</Text>
+          </View>
+        }
+        renderItem={({ item }) => <HistoryRow item={item} now={now} />}
+      />
+    </View>
+  );
+}
+
+function HistoryRow({ item, now }: { item: NotificationHistoryEntry; now: number }) {
+  const icon = item.kind === "new-appointment" ? "🆕" : "🔄";
+  return (
+    <View style={[styles.historyCard, !item.read && styles.historyCardUnread]}>
+      <Text style={styles.historyIcon}>{icon}</Text>
+      <View style={styles.historyBody}>
+        <Text style={styles.historyTitle}>{item.title}</Text>
+        <Text style={styles.historyText}>{item.body}</Text>
+        <Text style={styles.historyTime}>{formatRelativeTime(item.timestamp, now)}</Text>
+      </View>
+      {!item.read && <View style={styles.unreadDot} />}
+    </View>
   );
 }
 
@@ -586,4 +678,19 @@ const styles = StyleSheet.create({
   },
   checkoutDisabled: { opacity: 0.5 },
   checkoutBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  tabLabelWrap: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  tabBadge: { backgroundColor: "#dc2626", borderRadius: 99, minWidth: 18, paddingHorizontal: 5, paddingVertical: 1, alignItems: "center" },
+  tabBadgeText: { color: "#fff", fontSize: 10, fontWeight: "700" },
+  historyWrap: { flex: 1 },
+  historyBar: { paddingHorizontal: 16, paddingTop: 12, alignItems: "flex-end" },
+  clearBtn: { backgroundColor: "#fee2e2", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  clearBtnText: { color: "#dc2626", fontSize: 12, fontWeight: "700" },
+  historyCard: { flexDirection: "row", alignItems: "flex-start", backgroundColor: "#fff", borderRadius: 12, padding: 14, gap: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  historyCardUnread: { backgroundColor: "#f0fdf4" },
+  historyIcon: { fontSize: 18 },
+  historyBody: { flex: 1 },
+  historyTitle: { fontSize: 14, fontWeight: "700", color: "#111827" },
+  historyText: { fontSize: 13, color: "#374151", marginTop: 2 },
+  historyTime: { fontSize: 11, color: "#9ca3af", marginTop: 6 },
+  unreadDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#16a34a", marginTop: 4 },
 });
