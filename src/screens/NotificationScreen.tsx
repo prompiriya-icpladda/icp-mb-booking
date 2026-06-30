@@ -66,6 +66,10 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
     fetchAppointments();
   }, [fetchAppointments]));
 
+  useEffect(() => {
+    exitSelectMode();
+  }, [activeTab]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchAppointments();
