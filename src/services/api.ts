@@ -55,6 +55,11 @@ export async function checkinAppointment(id: string): Promise<CheckinResult> {
   return res.json();
 }
 
+// URL ของรูป QR (PNG) ที่ server สร้างให้ — ใช้แสดงในแอปหลังบันทึกนัดหมายระยะยาว
+export function visitorQrUrl(id: string): string {
+  return `${API_URL}/visitor-appointments/${id}/qr`;
+}
+
 // สแกนออก — ทำเครื่องหมายว่า rider/แม่ค้า "ไปแล้ว" (รองรับเฉพาะ rider/merchant ฝั่ง backend)
 export async function checkoutAppointment(id: string): Promise<CheckoutResult> {
   const res = await fetch(`${API_URL}/visitor-appointments/${id}/checkout`, {
@@ -386,7 +391,8 @@ export async function createWalkInVisit(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(requestBody),
   });
-  return parseJsonResponse<CreateWalkInVisitResult>(res);
+  const data = await parseJsonResponse<{ _id?: string; id?: string; error?: string }>(res);
+  return { success: true, id: data._id ?? data.id, error: data.error };
 }
 
 export async function ocrLicensePlate(
