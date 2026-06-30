@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -20,6 +21,7 @@ import {
   HrEmployee,
   ocrLicensePlate,
   searchHrEmployees,
+  visitorQrUrl,
   VISITOR_TYPE_OPTIONS,
   visitorTypeNeedsHost,
   VisitorQrMode,
@@ -55,6 +57,12 @@ export default function WalkInScreen() {
   const [message, setMessage] = useState<{
     type: "ok" | "error";
     text: string;
+  } | null>(null);
+  const [qrModal, setQrModal] = useState<{
+    id: string;
+    visitorName: string;
+    visitorOrganization: string;
+    expiryDate: string;
   } | null>(null);
   const idInputRef = useRef<TextInput>(null);
   const cameraRef = useRef<CameraView>(null);
@@ -207,7 +215,7 @@ export default function WalkInScreen() {
       const hostUserId = host
         ? host.userId ?? host.employeeId ?? host.employeeCode
         : "";
-      await createWalkInVisit({
+      const result = await createWalkInVisit({
         visitorName: visitorName.trim(),
         hostEmployeeCode: host?.employeeCode ?? "",
         hostName: host?.name ?? "",
@@ -234,8 +242,18 @@ export default function WalkInScreen() {
         licensePlates: plates,
         source: "mobile-walk-in",
       });
-      resetForm();
-      setMessage({ type: "ok", text: "บันทึกข้อมูลเรียบร้อย" });
+      if (qrMode === "long-term" && result.id) {
+        setQrModal({
+          id: result.id,
+          visitorName: visitorName.trim(),
+          visitorOrganization: companyName.trim(),
+          expiryDate: expiryDate ? formatDateLocal(expiryDate) : "",
+        });
+        resetForm();
+      } else {
+        resetForm();
+        setMessage({ type: "ok", text: "บันทึกข้อมูลเรียบร้อย" });
+      }
     } catch (e) {
       const errorMessage =
         e instanceof Error ? e.message : "ไม่สามารถบันทึกข้อมูลได้";
@@ -647,6 +665,39 @@ export default function WalkInScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={!!qrModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setQrModal(null)}
+      >
+        <View style={styles.qrModalBackdrop}>
+          <View style={styles.qrModalCard}>
+            <Text style={styles.qrModalTitle}>QR Code ระยะยาว</Text>
+            {qrModal && (
+              <Image
+                source={{ uri: visitorQrUrl(qrModal.id) }}
+                style={styles.qrImage}
+                resizeMode="contain"
+              />
+            )}
+            <Text style={styles.qrName}>{qrModal?.visitorName}</Text>
+            {!!qrModal?.visitorOrganization && (
+              <Text style={styles.qrMeta}>{qrModal.visitorOrganization}</Text>
+            )}
+            {!!qrModal?.expiryDate && (
+              <Text style={styles.qrMeta}>หมดอายุ {qrModal.expiryDate}</Text>
+            )}
+            <Text style={styles.qrNote}>
+              ให้ผู้มาติดต่อแสดง QR นี้ที่จุดรักษาความปลอดภัยในครั้งถัดไป
+            </Text>
+            <TouchableOpacity style={styles.qrDoneBtn} onPress={() => setQrModal(null)}>
+              <Text style={styles.qrDoneText}>เสร็จสิ้น</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -905,4 +956,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cameraCaptureText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  qrModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  qrModalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    maxWidth: 360,
+    alignItems: "center",
+  },
+  qrModalTitle: { fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 16 },
+  qrImage: { width: 220, height: 220, marginBottom: 16 },
+  qrName: { fontSize: 16, fontWeight: "700", color: "#111827", textAlign: "center" },
+  qrMeta: { fontSize: 13, color: "#6b7280", marginTop: 4, textAlign: "center" },
+  qrNote: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 12,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  qrDoneBtn: {
+    marginTop: 20,
+    backgroundColor: "#16a34a",
+    borderRadius: 8,
+    paddingVertical: 13,
+    alignItems: "center",
+    alignSelf: "stretch",
+  },
+  qrDoneText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });
