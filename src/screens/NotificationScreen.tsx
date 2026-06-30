@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { getActiveLongTermAppointments, longTermStatus, LongTermStatus, TodayAppointment } from "../services/api";
+import { checkoutAppointment, getActiveLongTermAppointments, isLongTermCheckoutable, longTermStatus, LongTermStatus, TodayAppointment } from "../services/api";
 import { checkAndNotify, notifyNow } from "../utils/notificationService";
 import { useAppointmentStream } from "../utils/useAppointmentStream";
 
@@ -26,6 +26,9 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [checkingOut, setCheckingOut] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchAppointments = useCallback(async () => {
@@ -68,6 +71,32 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
     await fetchAppointments();
     setRefreshing(false);
   }, [fetchAppointments]);
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  async function checkoutSelected() {
+    if (selectedIds.size === 0) return;
+    setCheckingOut(true);
+    try {
+      await Promise.allSettled([...selectedIds].map((id) => checkoutAppointment(id)));
+      await fetchAppointments();
+    } finally {
+      setCheckingOut(false);
+      exitSelectMode();
+    }
+  }
 
   const today = new Date().toLocaleDateString("th-TH", {
     weekday: "long",
@@ -120,6 +149,23 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
         </TouchableOpacity>
       </View>
 
+      {isLongTerm && (
+        <View style={styles.selectBar}>
+          <TouchableOpacity
+            style={styles.selectToggle}
+            onPress={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.selectToggleText}>
+              {selectMode ? "ยกเลิก" : "เลือกเช็คเอาท์"}
+            </Text>
+          </TouchableOpacity>
+          {selectMode && (
+            <Text style={styles.selectHint}>เลือก rider/แม่ค้า ที่ "มาแล้ว"</Text>
+          )}
+        </View>
+      )}
+
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#16a34a" />
@@ -152,31 +198,95 @@ export default function NotificationScreen({ onScanRequest }: { onScanRequest?: 
               </Text>
             </View>
           }
-          renderItem={({ item }) => <AppointmentCard item={item} onScanRequest={onScanRequest} />}
+          renderItem={({ item }) => (
+            <AppointmentCard
+              item={item}
+              onScanRequest={onScanRequest}
+              selectMode={isLongTerm && selectMode}
+              selected={selectedIds.has(item._id)}
+              selectable={isLongTermCheckoutable(item)}
+              onToggleSelect={toggleSelect}
+            />
+          )}
         />
+      )}
+
+      {isLongTerm && selectMode && (
+        <View style={styles.actionBar}>
+          <TouchableOpacity
+            style={[
+              styles.checkoutBtn,
+              (selectedIds.size === 0 || checkingOut) && styles.checkoutDisabled,
+            ]}
+            onPress={checkoutSelected}
+            disabled={selectedIds.size === 0 || checkingOut}
+            activeOpacity={0.85}
+          >
+            {checkingOut ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.checkoutBtnText}>
+                เช็คเอาท์ที่เลือก ({selectedIds.size})
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
 }
 
-function AppointmentCard({ item, onScanRequest }: { item: TodayAppointment; onScanRequest?: () => void }) {
+function AppointmentCard({
+  item,
+  onScanRequest,
+  selectMode = false,
+  selected = false,
+  selectable = false,
+  onToggleSelect,
+}: {
+  item: TodayAppointment;
+  onScanRequest?: () => void;
+  selectMode?: boolean;
+  selected?: boolean;
+  selectable?: boolean;
+  onToggleSelect?: (id: string) => void;
+}) {
   const isLongTerm = item.qrMode === "long-term";
   const checkedIn = !!item.checkedInAt;
   const ltStatus = longTermStatus(item);
-  // ระยะยาวสแกนซ้ำได้เสมอ → แตะเพื่อสแกนได้ตลอด; ปกติแตะได้เฉพาะที่ยังไม่เช็คอิน
-  const tappable = !!onScanRequest && (isLongTerm || !checkedIn);
+
+  // โหมดเลือก: แตะเพื่อเลือก (เฉพาะใบที่เลือกได้); โหมดปกติ: แตะเพื่อสแกน
+  const tappable = selectMode
+    ? selectable
+    : !!onScanRequest && (isLongTerm || !checkedIn);
   const Wrapper = tappable ? TouchableOpacity : View;
+  const handlePress = selectMode ? () => onToggleSelect?.(item._id) : onScanRequest;
+
   return (
     <Wrapper
-      style={styles.card}
-      {...(tappable ? { onPress: onScanRequest, activeOpacity: 0.75 } : {})}
+      style={[
+        styles.card,
+        selectMode && !selectable && styles.cardDisabled,
+        selected && styles.cardSelected,
+      ]}
+      {...(tappable ? { onPress: handlePress, activeOpacity: 0.75 } : {})}
     >
       <View style={styles.cardHeader}>
         <View style={styles.cardLeft}>
           <Text style={styles.visitorName}>{item.visitorName}</Text>
           <Text style={styles.organization}>{item.visitorOrganization}</Text>
         </View>
-        {isLongTerm ? (
+        {selectMode && isLongTerm ? (
+          <View
+            style={[
+              styles.checkbox,
+              selected && styles.checkboxOn,
+              !selectable && styles.checkboxDisabled,
+            ]}
+          >
+            <Text style={styles.checkboxMark}>{selected ? "✓" : ""}</Text>
+          </View>
+        ) : isLongTerm ? (
           <View style={[styles.statusBadge, longTermBadgeStyle(ltStatus)]}>
             <Text style={[styles.statusText, longTermTextStyle(ltStatus)]}>{longTermLabel(ltStatus)}</Text>
           </View>
@@ -200,7 +310,7 @@ function AppointmentCard({ item, onScanRequest }: { item: TodayAppointment; onSc
       </View>
       <View style={styles.cardFooter}>
         <Text style={styles.createdBy}>มาพบ: {item.createdByName}</Text>
-        {tappable && (
+        {!selectMode && tappable && (
           <View style={styles.scanHint}>
             <Text style={styles.scanHintText}>📷 แตะเพื่อสแกน</Text>
           </View>
@@ -350,4 +460,55 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   scanHintText: { fontSize: 11, color: "#16a34a", fontWeight: "600" },
+  selectBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  selectToggle: {
+    backgroundColor: "#1f2937",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  selectToggleText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  selectHint: { color: "#6b7280", fontSize: 12, flex: 1 },
+  cardDisabled: { opacity: 0.45 },
+  cardSelected: { borderWidth: 2, borderColor: "#16a34a" },
+  checkbox: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#9ca3af",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  checkboxOn: { backgroundColor: "#16a34a", borderColor: "#16a34a" },
+  checkboxDisabled: { borderColor: "#e5e7eb", backgroundColor: "#f3f4f6" },
+  checkboxMark: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  actionBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+  },
+  checkoutBtn: {
+    backgroundColor: "#16a34a",
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  checkoutDisabled: { opacity: 0.5 },
+  checkoutBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });
