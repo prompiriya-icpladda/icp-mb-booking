@@ -6,6 +6,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": true,
+    "isolatedModules": true,
     "lib": ["ES2019", "DOM"],
     "types": ["jest", "node"]
   }
