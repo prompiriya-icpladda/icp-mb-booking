@@ -8,7 +8,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { checkinAppointment, CheckinResult } from "../services/api";
+import {
+  checkinAppointment,
+  CheckinResult,
+  shouldRouteToCheckout,
+} from "../services/api";
 
 type ScanState = "scanning" | "loading" | "result";
 
@@ -20,7 +24,13 @@ interface ResultDisplay {
   errorMsg?: string;
 }
 
-export default function ScannerScreen({ onBack }: { onBack?: () => void }) {
+export default function ScannerScreen({
+  onBack,
+  onCheckout,
+}: {
+  onBack?: () => void;
+  onCheckout?: (appointmentId: string) => void;
+}) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanState, setScanState] = useState<ScanState>("scanning");
   const [result, setResult] = useState<ResultDisplay | null>(null);
@@ -43,6 +53,10 @@ export default function ScannerScreen({ onBack }: { onBack?: () => void }) {
     setScanState("loading");
     try {
       const res = await checkinAppointment(id);
+      if (onCheckout && shouldRouteToCheckout(res)) {
+        onCheckout(id);
+        return; // ข้าม modal — กำลังเด้งไปหน้าแจ้งเตือนเพื่อเช็คเอาท์ (อย่า setState ต่อ: หน้านี้กำลังจะ unmount)
+      }
       if (res.success) {
         setResult({
           icon: res.alreadyCheckedIn ? "⚠️" : "✅",
