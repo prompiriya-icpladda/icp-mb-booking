@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { checkoutAppointment, getActiveLongTermAppointments, isLongTermCheckoutable, longTermCardAction, longTermStatus, LongTermStatus, TodayAppointment } from "../services/api";
+import { checkoutAppointment, getActiveLongTermAppointments, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, longTermStatus, LongTermStatus, TodayAppointment } from "../services/api";
 import { checkAndNotify, notifyNow } from "../utils/notificationService";
 import { useAppointmentStream } from "../utils/useAppointmentStream";
 import LongTermDetailScreen from "./LongTermDetailScreen";
@@ -55,9 +55,10 @@ export default function NotificationScreen({
       setError("ไม่สามารถโหลดข้อมูลได้");
     }
     // ระยะยาว — best effort: ถ้าโหลดไม่ได้ คงลิสต์เดิมไว้ ไม่ให้กระทบแท็บปกติ
+    // โชว์เฉพาะ "มาแล้ว" (คนที่อยู่ในพื้นที่) — ซ่อน "ลงทะเบียน" และ "เช็คเอาท์"
     try {
       const longTerm = await getActiveLongTermAppointments();
-      setLongTermAppointments(longTerm);
+      setLongTermAppointments(longTerm.filter(isLongTermOnSite));
     } catch {
       // เงียบไว้
     }

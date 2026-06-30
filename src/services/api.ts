@@ -113,6 +113,14 @@ export function isLongTermCheckoutable(
   );
 }
 
+// แท็บ "ระยะยาว" โชว์เฉพาะคนที่อยู่ในพื้นที่ตอนนี้ = "มาแล้ว" (เช็คอินแล้ว ยังไม่เช็คเอาท์)
+// ซ่อน "ลงทะเบียน" (ยังไม่มา) และ "เช็คเอาท์" (ไปแล้ว)
+export function isLongTermOnSite(
+  a: Pick<TodayAppointment, "checkedInAt" | "completedAt">,
+): boolean {
+  return longTermStatus(a) === "arrived";
+}
+
 export type LongTermCardAction = "detail" | "scan" | "select";
 
 // ตัดสินว่าแตะการ์ด long-term แล้วทำอะไร (pure → unit test ได้)

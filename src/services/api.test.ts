@@ -1,4 +1,4 @@
-import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, isLongTermCheckoutable, longTermCardAction, shouldRouteToCheckout } from "./api";
+import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout } from "./api";
 
 describe("visitorTypeNeedsIdCard", () => {
   it("returns false for rider and merchant", () => {
@@ -110,6 +110,23 @@ describe("isLongTermCheckoutable", () => {
     expect(
       isLongTermCheckoutable({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: null }),
     ).toBe(false);
+  });
+});
+
+describe("isLongTermOnSite", () => {
+  it("shows an arrived visitor (checked in, not checked out)", () => {
+    expect(isLongTermOnSite({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: null })).toBe(true);
+  });
+  it("hides a registered visitor (not yet arrived)", () => {
+    expect(isLongTermOnSite({ checkedInAt: null, completedAt: null })).toBe(false);
+  });
+  it("hides a checked-out visitor (already left)", () => {
+    expect(
+      isLongTermOnSite({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: "2026-06-30T05:00:00Z" }),
+    ).toBe(false);
+  });
+  it("treats a missing completedAt with a check-in as on-site", () => {
+    expect(isLongTermOnSite({ checkedInAt: "2026-06-30T01:00:00Z" })).toBe(true);
   });
 });
 
