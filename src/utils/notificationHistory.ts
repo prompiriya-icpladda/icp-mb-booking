@@ -86,8 +86,8 @@ export async function markAllRead(): Promise<void> {
 }
 
 export async function clearHistory(): Promise<void> {
+  await hydrate();
   cache = [];
-  hydrated = true;
   notify();
   await persist();
 }
