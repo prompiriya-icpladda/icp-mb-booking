@@ -1,4 +1,4 @@
-import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout } from "./api";
+import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, presetExpiryDate } from "./api";
 
 describe("visitorTypeNeedsIdCard", () => {
   it("returns false for rider and merchant", () => {
@@ -180,5 +180,31 @@ describe("shouldRouteToCheckout", () => {
   });
   it("returns false for an empty result", () => {
     expect(shouldRouteToCheckout({})).toBe(false);
+  });
+});
+
+describe("presetExpiryDate", () => {
+  const now = new Date("2026-06-30T00:00:00");
+  const ymd = (d: Date | null) =>
+    d ? [d.getFullYear(), d.getMonth(), d.getDate()] : null;
+
+  it("adds 7 days for 1w", () => {
+    expect(ymd(presetExpiryDate("1w", now))).toEqual([2026, 6, 7]); // 2026-07-07
+  });
+  it("adds 1/3/6 months for month presets", () => {
+    expect(ymd(presetExpiryDate("1m", now))).toEqual([2026, 6, 30]);  // 2026-07-30
+    expect(ymd(presetExpiryDate("3m", now))).toEqual([2026, 8, 30]);  // 2026-09-30
+    expect(ymd(presetExpiryDate("6m", now))).toEqual([2026, 11, 30]); // 2026-12-30
+  });
+  it("adds 1 year for 1y", () => {
+    expect(ymd(presetExpiryDate("1y", now))).toEqual([2027, 5, 30]); // 2027-06-30
+  });
+  it("returns null for custom", () => {
+    expect(presetExpiryDate("custom", now)).toBeNull();
+  });
+  it("does not mutate the passed-in now", () => {
+    const ref = new Date("2026-06-30T00:00:00");
+    presetExpiryDate("1y", ref);
+    expect(ymd(ref)).toEqual([2026, 5, 30]); // เดิมไม่เปลี่ยน
   });
 });

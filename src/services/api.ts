@@ -348,6 +348,34 @@ export const VISITOR_TYPE_OPTIONS: { value: VisitorType; label: string }[] = [
   { value: "merchant", label: "แม่ค้า" },
 ];
 
+// ช่วงวันหมดอายุสำหรับ QR ระยะยาว — preset ลัด + "กำหนดเอง" (เลือกวันเองผ่าน date picker)
+export type ExpiryPreset = "1w" | "1m" | "3m" | "6m" | "1y" | "custom";
+
+export const EXPIRY_PRESET_OPTIONS: { value: ExpiryPreset; label: string }[] = [
+  { value: "1w", label: "1 อาทิตย์" },
+  { value: "1m", label: "1 เดือน" },
+  { value: "3m", label: "3 เดือน" },
+  { value: "6m", label: "6 เดือน" },
+  { value: "1y", label: "1 ปี" },
+  { value: "custom", label: "กำหนดเอง" },
+];
+
+// คำนวณวันหมดอายุจาก now ตาม preset; "custom" คืน null (ให้ caller ใช้ค่าที่ผู้ใช้เลือกเอง)
+// รับ now เป็น param (default = new Date()) เพื่อให้เทสต์ deterministic และไม่ mutate ตัวที่ส่งเข้ามา
+export function presetExpiryDate(
+  preset: ExpiryPreset,
+  now: Date = new Date(),
+): Date | null {
+  if (preset === "custom") return null;
+  const d = new Date(now.getTime());
+  if (preset === "1w") d.setDate(d.getDate() + 7);
+  else if (preset === "1m") d.setMonth(d.getMonth() + 1);
+  else if (preset === "3m") d.setMonth(d.getMonth() + 3);
+  else if (preset === "6m") d.setMonth(d.getMonth() + 6);
+  else if (preset === "1y") d.setFullYear(d.getFullYear() + 1);
+  return d;
+}
+
 // rider / แม่ค้า มาขายของ ไม่ได้มาพบใคร จึงไม่ต้องระบุผู้ที่ต้องการพบ (host)
 export function visitorTypeNeedsHost(visitorType: VisitorType): boolean {
   return visitorType !== "rider" && visitorType !== "merchant";
