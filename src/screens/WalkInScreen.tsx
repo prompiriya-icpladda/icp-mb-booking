@@ -11,11 +11,14 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  AppText as Text,
+  AppTextInput as TextInput,
+  type AppTextInputRef,
+} from "../theme/typography";
 import {
   createWalkInVisit,
   EXPIRY_PRESET_OPTIONS,
@@ -73,7 +76,7 @@ export default function WalkInScreen() {
     expiryDate: string;
   } | null>(null);
   const [qrImageError, setQrImageError] = useState(false);
-  const idInputRef = useRef<TextInput>(null);
+  const idInputRef = useRef<AppTextInputRef>(null);
   const cameraRef = useRef<CameraView>(null);
 
   // rider / แม่ค้า มาขายของ ไม่ต้องเลือกผู้ที่ต้องการพบ

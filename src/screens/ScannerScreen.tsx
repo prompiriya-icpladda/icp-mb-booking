@@ -4,10 +4,10 @@ import {
   ActivityIndicator,
   Modal,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { AppText as Text } from "../theme/typography";
 import {
   checkinAppointment,
   CheckinResult,

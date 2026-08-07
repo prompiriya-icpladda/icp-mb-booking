@@ -4,10 +4,10 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { AppText as Text } from "../theme/typography";
 import { checkoutAppointment, TodayAppointment, VisitorType } from "../services/api";
 
 function visitorTypeLabel(t?: VisitorType): string {

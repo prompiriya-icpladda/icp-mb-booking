@@ -6,10 +6,10 @@ import {
   Modal,
   RefreshControl,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { AppText as Text } from "../theme/typography";
 import { checkoutAppointment, getActiveLongTermAppointments, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, longTermStatus, LongTermStatus, normalStatus, NormalStatus, sortAppointmentsByLatest, TodayAppointment } from "../services/api";
 import { checkAndNotify, notifyNow } from "../utils/notificationService";
 import { useAppointmentStream } from "../utils/useAppointmentStream";

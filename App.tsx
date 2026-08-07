@@ -1,10 +1,18 @@
+import {
+  Kanit_400Regular,
+  Kanit_500Medium,
+  Kanit_600SemiBold,
+  Kanit_700Bold,
+  useFonts,
+} from "@expo-google-fonts/kanit";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import KioskGuard from "./src/components/KioskGuard";
 import NotificationScreen from "./src/screens/NotificationScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
 import WalkInScreen from "./src/screens/WalkInScreen";
+import { AppText as Text } from "./src/theme/typography";
 import {
   registerBackgroundTask,
   requestPermissions,
@@ -142,6 +150,13 @@ function MainApp() {
 }
 
 export default function App() {
+  const [fontsLoaded, fontError] = useFonts({
+    Kanit_400Regular,
+    Kanit_500Medium,
+    Kanit_600SemiBold,
+    Kanit_700Bold,
+  });
+
   useEffect(() => {
     requestPermissions();
     registerBackgroundTask();
@@ -154,6 +169,14 @@ export default function App() {
     };
   }, []);
 
+  if (!fontsLoaded && !fontError) {
+    return (
+      <View style={styles.bootScreen}>
+        <StatusBar style="light" hidden />
+      </View>
+    );
+  }
+
   return (
     <KioskGuard>
       <StatusBar style="light" hidden />
@@ -163,6 +186,7 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  bootScreen: { flex: 1, backgroundColor: "#111827" },
   root: { flex: 1, backgroundColor: "#111827" },
   screen: { flex: 1 },
   tabBar: {

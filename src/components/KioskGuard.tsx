@@ -9,11 +9,14 @@ import {
   Modal,
   Platform,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  AppText as Text,
+  AppTextInput as TextInput,
+  type AppTextInputRef,
+} from "../theme/typography";
 
 const ADMIN_PASSWORD_KEY = "kiosk_admin_password";
 const DEFAULT_ADMIN_PASSWORD = "!CPNKadmin0505";
@@ -43,7 +46,7 @@ export default function KioskGuard({
   const [modalVisible, setModalVisible] = useState(false);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<AppTextInputRef>(null);
 
   useEffect(() => {
     hideNavBar();
