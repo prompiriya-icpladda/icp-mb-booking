@@ -103,6 +103,18 @@ export function longTermStatus(
   return "registered";
 }
 
+export type NormalStatus = "pending" | "checked-in" | "completed";
+
+// อนุมานสถานะนัดหมายปกติ (single-use) — completedAt มาจาก host กด "เสร็จสิ้น" ใน LINE
+// (completedAt ชนะ checkedInAt เผื่อกรณีไม่ได้สแกนเช็คอินแต่ host ปิดงานแล้ว)
+export function normalStatus(
+  a: Pick<TodayAppointment, "checkedInAt" | "completedAt">,
+): NormalStatus {
+  if (a.completedAt) return "completed";
+  if (a.checkedInAt) return "checked-in";
+  return "pending";
+}
+
 // เลือกเช็คเอาท์ในแอปได้เฉพาะ rider/แม่ค้า (ไม่มี host) ที่สถานะ "มาแล้ว"
 export function isLongTermCheckoutable(
   a: Pick<TodayAppointment, "checkedInAt" | "completedAt" | "visitorType">,
@@ -133,6 +145,32 @@ export function longTermCardAction(
 ): LongTermCardAction {
   if (selectMode) return "select";
   return isLongTermCheckoutable(a) ? "detail" : "scan";
+}
+
+// แปลงเวลานัด "HH:mm" เป็นนาทีนับจากเที่ยงคืน — กันรูปแบบไม่ zero-pad ("9:30") และจุด ("9.30")
+// คืน -1 เมื่ออ่านไม่ออก/ไม่มีค่า เพื่อให้ตกไปท้ายลิสต์แทนที่จะไปแทรกด้านบน
+export function appointmentTimeMinutes(time?: string | null): number {
+  const match = /^(\d{1,2})[:.](\d{2})$/.exec((time ?? "").trim());
+  if (!match) return -1;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return -1;
+  return hour * 60 + minute;
+}
+
+// เรียงนัดหมาย "ล่าสุดขึ้นก่อน" — เวลานัดมากไปน้อย (10:01 มาก่อน 10:00)
+// เวลาซ้ำกันตัดสินด้วย _id จากมากไปน้อย (ObjectId เรียงตามเวลาที่สร้าง = ใบใหม่ขึ้นก่อน)
+// เรียงฝั่งแอปเองแทนที่จะพึ่ง sort ของ server (server sort เป็น string จึงพลาดกรณี "9:30" > "10:00")
+export function sortAppointmentsByLatest<
+  T extends Pick<TodayAppointment, "_id" | "appointmentTime">,
+>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const diff =
+      appointmentTimeMinutes(b.appointmentTime) -
+      appointmentTimeMinutes(a.appointmentTime);
+    if (diff !== 0) return diff;
+    return b._id.localeCompare(a._id);
+  });
 }
 
 export async function getTodayAppointments(): Promise<TodayAppointment[]> {

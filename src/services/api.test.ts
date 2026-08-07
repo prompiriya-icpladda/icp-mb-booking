@@ -1,4 +1,4 @@
-import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, presetExpiryDate, EXPIRY_PRESET_OPTIONS } from "./api";
+import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, presetExpiryDate, appointmentTimeMinutes, sortAppointmentsByLatest, EXPIRY_PRESET_OPTIONS } from "./api";
 
 describe("visitorTypeNeedsIdCard", () => {
   it("returns false for rider and merchant", () => {
@@ -77,6 +77,26 @@ describe("longTermStatus", () => {
   });
   it("treats a missing completedAt as not checked out", () => {
     expect(longTermStatus({ checkedInAt: "2026-06-30T01:00:00Z" })).toBe("arrived");
+  });
+});
+
+describe("normalStatus", () => {
+  it("returns 'pending' when never checked in", () => {
+    expect(normalStatus({ checkedInAt: null, completedAt: null })).toBe("pending");
+  });
+  it("returns 'checked-in' when checked in but the host has not finished", () => {
+    expect(normalStatus({ checkedInAt: "2026-08-07T02:00:00Z", completedAt: null })).toBe("checked-in");
+  });
+  it("returns 'completed' once the host presses เสร็จสิ้น", () => {
+    expect(
+      normalStatus({ checkedInAt: "2026-08-07T02:00:00Z", completedAt: "2026-08-07T04:00:00Z" }),
+    ).toBe("completed");
+  });
+  it("returns 'completed' even when the check-in scan was missed", () => {
+    expect(normalStatus({ checkedInAt: null, completedAt: "2026-08-07T04:00:00Z" })).toBe("completed");
+  });
+  it("treats a missing completedAt as not completed", () => {
+    expect(normalStatus({ checkedInAt: "2026-08-07T02:00:00Z" })).toBe("checked-in");
   });
 });
 
@@ -219,5 +239,56 @@ describe("EXPIRY_PRESET_OPTIONS", () => {
       { value: "1y", label: "1 ปี" },
       { value: "custom", label: "กำหนดเอง" },
     ]);
+  });
+});
+
+describe("appointmentTimeMinutes", () => {
+  it("parses HH:mm into minutes since midnight", () => {
+    expect(appointmentTimeMinutes("10:00")).toBe(600);
+    expect(appointmentTimeMinutes("10:01")).toBe(601);
+    expect(appointmentTimeMinutes("00:00")).toBe(0);
+    expect(appointmentTimeMinutes("23:59")).toBe(1439);
+  });
+  it("accepts non-padded hours and a dot separator", () => {
+    expect(appointmentTimeMinutes("9:30")).toBe(570);
+    expect(appointmentTimeMinutes("9.30")).toBe(570);
+    expect(appointmentTimeMinutes(" 10:05 ")).toBe(605);
+  });
+  it("returns -1 for missing or unparsable values", () => {
+    expect(appointmentTimeMinutes(undefined)).toBe(-1);
+    expect(appointmentTimeMinutes("")).toBe(-1);
+    expect(appointmentTimeMinutes("บ่ายโมง")).toBe(-1);
+    expect(appointmentTimeMinutes("25:00")).toBe(-1);
+    expect(appointmentTimeMinutes("10:75")).toBe(-1);
+  });
+});
+
+describe("sortAppointmentsByLatest", () => {
+  const at = (_id: string, appointmentTime: string) => ({ _id, appointmentTime });
+
+  it("puts the later appointment time first", () => {
+    const sorted = sortAppointmentsByLatest([at("a", "10:00"), at("b", "10:01")]);
+    expect(sorted.map((x) => x._id)).toEqual(["b", "a"]);
+  });
+  it("sorts by clock time, not by string order", () => {
+    const sorted = sortAppointmentsByLatest([
+      at("a", "9:30"),
+      at("b", "10:00"),
+      at("c", "13:45"),
+    ]);
+    expect(sorted.map((x) => x._id)).toEqual(["c", "b", "a"]);
+  });
+  it("breaks ties on _id so the newest record wins", () => {
+    const sorted = sortAppointmentsByLatest([at("aaa1", "10:00"), at("aaa2", "10:00")]);
+    expect(sorted.map((x) => x._id)).toEqual(["aaa2", "aaa1"]);
+  });
+  it("sinks entries without a usable time to the bottom", () => {
+    const sorted = sortAppointmentsByLatest([at("a", ""), at("b", "08:00")]);
+    expect(sorted.map((x) => x._id)).toEqual(["b", "a"]);
+  });
+  it("does not mutate the input array", () => {
+    const input = [at("a", "10:00"), at("b", "10:01")];
+    sortAppointmentsByLatest(input);
+    expect(input.map((x) => x._id)).toEqual(["a", "b"]);
   });
 });

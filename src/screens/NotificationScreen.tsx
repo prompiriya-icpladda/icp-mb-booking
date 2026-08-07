@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { checkoutAppointment, getActiveLongTermAppointments, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, longTermStatus, LongTermStatus, TodayAppointment } from "../services/api";
+import { checkoutAppointment, getActiveLongTermAppointments, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, longTermStatus, LongTermStatus, normalStatus, NormalStatus, sortAppointmentsByLatest, TodayAppointment } from "../services/api";
 import { checkAndNotify, notifyNow } from "../utils/notificationService";
 import { useAppointmentStream } from "../utils/useAppointmentStream";
 import LongTermDetailScreen from "./LongTermDetailScreen";
@@ -55,7 +55,10 @@ export default function NotificationScreen({
     // นัดหมายวันนี้ — ตัวที่ขับการแจ้งเตือน (เก็บเฉพาะ single-use ไว้โชว์แท็บปกติ)
     try {
       const data = await checkAndNotify();
-      setTodayAppointments(data.filter((a) => a.qrMode !== "long-term"));
+      // ล่าสุดขึ้นก่อน — เรียงในแอปเอง ไม่พึ่งลำดับจาก server
+      setTodayAppointments(
+        sortAppointmentsByLatest(data.filter((a) => a.qrMode !== "long-term")),
+      );
       setLastUpdated(new Date());
       setError(null);
     } catch {
@@ -402,6 +405,7 @@ function AppointmentCard({
   const isLongTerm = item.qrMode === "long-term";
   const checkedIn = !!item.checkedInAt;
   const ltStatus = longTermStatus(item);
+  const nmStatus = normalStatus(item);
 
   // long-term: longTermCardAction ตัดสิน select/detail/scan; การ์ดปกติ: สแกนเหมือนเดิม
   const wantsDetail = isLongTerm && longTermCardAction(item, selectMode) === "detail";
@@ -449,10 +453,8 @@ function AppointmentCard({
             <Text style={[styles.statusText, longTermTextStyle(ltStatus)]}>{longTermLabel(ltStatus)}</Text>
           </View>
         ) : (
-          <View style={[styles.statusBadge, checkedIn ? styles.statusChecked : styles.statusPending]}>
-            <Text style={[styles.statusText, checkedIn ? styles.statusCheckedText : styles.statusPendingText]}>
-              {checkedIn ? "เช็คอินแล้ว" : "รอเช็คอิน"}
-            </Text>
+          <View style={[styles.statusBadge, normalBadgeStyle(nmStatus)]}>
+            <Text style={[styles.statusText, normalTextStyle(nmStatus)]}>{normalLabel(nmStatus)}</Text>
           </View>
         )}
       </View>
@@ -553,6 +555,26 @@ function longTermBadgeStyle(s: LongTermStatus) {
     : s === "arrived"
       ? styles.statusChecked
       : styles.statusCheckedOut;
+}
+
+function normalLabel(s: NormalStatus) {
+  return s === "pending" ? "รอเช็คอิน" : s === "checked-in" ? "เช็คอินแล้ว" : "เสร็จสิ้น";
+}
+
+function normalBadgeStyle(s: NormalStatus) {
+  return s === "pending"
+    ? styles.statusPending
+    : s === "checked-in"
+      ? styles.statusChecked
+      : styles.statusCheckedOut;
+}
+
+function normalTextStyle(s: NormalStatus) {
+  return s === "pending"
+    ? styles.statusPendingText
+    : s === "checked-in"
+      ? styles.statusCheckedText
+      : styles.statusCheckedOutText;
 }
 
 function longTermTextStyle(s: LongTermStatus) {
