@@ -1,4 +1,4 @@
-import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, presetExpiryDate, appointmentTimeMinutes, sortAppointmentsByLatest, EXPIRY_PRESET_OPTIONS } from "./api";
+import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, presetExpiryDate, appointmentTimeMinutes, sortAppointmentsByLatest, EXPIRY_PRESET_OPTIONS, registerMobilePushToken } from "./api";
 
 describe("visitorTypeNeedsIdCard", () => {
   it("returns false for rider and merchant", () => {
@@ -239,6 +239,36 @@ describe("EXPIRY_PRESET_OPTIONS", () => {
       { value: "1y", label: "1 ปี" },
       { value: "custom", label: "กำหนดเอง" },
     ]);
+  });
+});
+
+describe("registerMobilePushToken", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("posts Expo token registration to the server", async () => {
+    const fetchMock = jest.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }));
+    (global as any).fetch = fetchMock;
+
+    await registerMobilePushToken({
+      token: "ExpoPushToken[abc123]",
+      deviceId: "kiosk-1",
+      platform: "android",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://app-plant.icpladda.com/ICPBooking/api/mobile-push/register",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: "ExpoPushToken[abc123]",
+          deviceId: "kiosk-1",
+          platform: "android",
+        }),
+      },
+    );
   });
 });
 

@@ -3,13 +3,15 @@ import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
-import { getTodayAppointments, TodayAppointment } from "../services/api";
+import { getTodayAppointments, registerMobilePushToken, TodayAppointment } from "../services/api";
 import { addHistoryEntry } from "./notificationHistory";
 import type { NotificationKind } from "./notificationHistory.logic";
 
 export const BACKGROUND_TASK = "check-today-appointments";
 const SEEN_KEY = "notified_appointment_ids";
+const DEVICE_ID_KEY = "mobile_push_device_id";
 const CHANNEL_ID = "appointments-v3";
+const EAS_PROJECT_ID = process.env.EXPO_PUBLIC_EAS_PROJECT_ID || "";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -61,6 +63,37 @@ export async function requestPermissions(): Promise<boolean> {
   await setupIOSNotifications();
   const { status } = await Notifications.requestPermissionsAsync();
   return status === "granted";
+}
+
+async function getDeviceId(): Promise<string> {
+  const existing = await SecureStore.getItemAsync(DEVICE_ID_KEY);
+  if (existing) return existing;
+  const created = `ap-scanner-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  await SecureStore.setItemAsync(DEVICE_ID_KEY, created);
+  return created;
+}
+
+export async function registerRemotePushToken(): Promise<string | null> {
+  if (Platform.OS !== "android" && Platform.OS !== "ios") return null;
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status !== "granted") return null;
+
+  try {
+    const expoToken = await Notifications.getExpoPushTokenAsync(
+      EAS_PROJECT_ID ? { projectId: EAS_PROJECT_ID } : undefined,
+    );
+    const token = expoToken.data;
+    if (!token) return null;
+    await registerMobilePushToken({
+      token,
+      deviceId: await getDeviceId(),
+      platform: Platform.OS,
+    });
+    return token;
+  } catch (err) {
+    console.log("Remote push registration failed:", err);
+    return null;
+  }
 }
 
 async function fireNotification(opts: {

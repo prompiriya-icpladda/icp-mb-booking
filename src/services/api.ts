@@ -10,6 +10,24 @@ export interface LoginResult {
   error?: string;
 }
 console.log("HR_API_URL =", HR_API_URL);
+
+export interface MobilePushRegistration {
+  token: string;
+  deviceId: string;
+  platform: "android" | "ios" | "unknown";
+}
+
+export async function registerMobilePushToken(
+  registration: MobilePushRegistration,
+): Promise<void> {
+  const res = await fetch(`${API_URL}/mobile-push/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(registration),
+  });
+  if (!res.ok) throw new Error("register mobile push failed");
+}
+
 export interface CheckinResult {
   success?: boolean;
   alreadyCheckedIn?: boolean;

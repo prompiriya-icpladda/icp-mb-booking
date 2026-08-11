@@ -15,6 +15,7 @@ import WalkInScreen from "./src/screens/WalkInScreen";
 import { AppText as Text } from "./src/theme/typography";
 import {
   registerBackgroundTask,
+  registerRemotePushToken,
   requestPermissions,
   startForegroundPolling,
   stopForegroundPolling,
@@ -158,7 +159,11 @@ export default function App() {
   });
 
   useEffect(() => {
-    requestPermissions();
+    requestPermissions()
+      .then((granted) => {
+        if (granted) registerRemotePushToken();
+      })
+      .catch(() => {});
     registerBackgroundTask();
     startForegroundPolling();
     startAppUpdateChecks();
