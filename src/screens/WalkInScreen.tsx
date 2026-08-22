@@ -17,14 +17,12 @@ import {
 import {
   AppText as Text,
   AppTextInput as TextInput,
-  type AppTextInputRef,
 } from "../theme/typography";
 import {
   createWalkInVisit,
   EXPIRY_PRESET_OPTIONS,
   ExpiryPreset,
   HrEmployee,
-  maskIdNumber,
   ocrLicensePlate,
   presetExpiryDate,
   searchHrEmployees,
@@ -32,10 +30,10 @@ import {
   VISITOR_TYPE_OPTIONS,
   visitorTypeNeedsCompany,
   visitorTypeNeedsHost,
-  visitorTypeNeedsIdCard,
   VisitorQrMode,
   VisitorType,
 } from "../services/api";
+import { readThaiIdCardName } from "../services/thaiIdCard";
 
 const MIN_VEHICLE_COUNT = 1;
 
@@ -43,8 +41,6 @@ export default function WalkInScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [visitorName, setVisitorName] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [idCardNumber, setIdCardNumber] = useState("");
-  const [idFocused, setIdFocused] = useState(false);
   const [purpose, setPurpose] = useState("");
   const [visitorType, setVisitorType] = useState<VisitorType>("visitor");
   const [visitorCount, setVisitorCount] = useState(1);
@@ -64,6 +60,7 @@ export default function WalkInScreen() {
   const [cameraReady, setCameraReady] = useState(false);
   const [activePlateIndex, setActivePlateIndex] = useState<number | null>(null);
   const [ocrLoadingIndex, setOcrLoadingIndex] = useState<number | null>(null);
+  const [cardReading, setCardReading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{
     type: "ok" | "error";
@@ -76,12 +73,10 @@ export default function WalkInScreen() {
     expiryDate: string;
   } | null>(null);
   const [qrImageError, setQrImageError] = useState(false);
-  const idInputRef = useRef<AppTextInputRef>(null);
   const cameraRef = useRef<CameraView>(null);
 
   // rider / แม่ค้า มาขายของ ไม่ต้องเลือกผู้ที่ต้องการพบ
   const hostRequired = visitorTypeNeedsHost(visitorType);
-  const idVisible = visitorTypeNeedsIdCard(visitorType);
   const companyVisible = visitorTypeNeedsCompany(visitorType);
 
   useEffect(() => {
@@ -124,7 +119,6 @@ export default function WalkInScreen() {
   function resetForm() {
     setVisitorName("");
     setCompanyName("");
-    setIdCardNumber("");
     setPurpose("");
     setVisitorType("visitor");
     setVisitorCount(1);
@@ -146,7 +140,6 @@ export default function WalkInScreen() {
 
   function handleVisitorTypeChange(next: VisitorType) {
     setVisitorType(next);
-    if (!visitorTypeNeedsIdCard(next)) setIdCardNumber("");
     if (!visitorTypeNeedsCompany(next)) setCompanyName("");
   }
 
@@ -160,14 +153,21 @@ export default function WalkInScreen() {
     }
   }
 
-  function handleIdChange(text: string) {
-    // display ยาวเท่า raw (1 หลัก = 1 ตัวอักษร) จึง diff ความยาวเพื่อถอดกลับเป็นเลขจริง
-    const prevDisplay = maskIdNumber(idCardNumber, true);
-    if (text.length > prevDisplay.length) {
-      const added = text.slice(prevDisplay.length).replace(/[^0-9]/g, "");
-      setIdCardNumber((idCardNumber + added).slice(0, 13));
-    } else if (text.length < prevDisplay.length) {
-      setIdCardNumber(idCardNumber.slice(0, text.length));
+  async function handleReadThaiIdCard() {
+    if (cardReading || submitting) return;
+    setCardReading(true);
+    setMessage(null);
+
+    try {
+      const cardName = await readThaiIdCardName();
+      setVisitorName(cardName.fullNameTh);
+      setMessage({ type: "ok", text: `อ่านบัตรสำเร็จ: ${cardName.fullNameTh}` });
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "อ่านบัตรไม่สำเร็จ";
+      setMessage({ type: "error", text });
+      Alert.alert("อ่านบัตรไม่สำเร็จ", text);
+    } finally {
+      setCardReading(false);
     }
   }
 
@@ -213,7 +213,6 @@ export default function WalkInScreen() {
   function validate(host: HrEmployee | null) {
     if (!visitorName.trim()) return "กรุณากรอกชื่อผู้มาติดต่อ";
     if (hostRequired && !host) return "กรุณาเลือกผู้ที่ต้องการพบจาก HR";
-    if (idVisible && !idCardNumber.trim()) return "กรุณากรอกรหัสบัตรประชาชน";
     if (companyVisible && !companyName.trim()) return "กรุณากรอกชื่อบริษัท";
     if (qrMode === "long-term" && !expiryDate) return "กรุณาเลือกวันหมดอายุ";
     if (hasVehicle) {
@@ -268,7 +267,6 @@ export default function WalkInScreen() {
         visitingUserId: hostUserId,
         visitingUserName: host?.name ?? "",
         visitingUserNickname: host?.nickname,
-        idCardNumber: idVisible ? idCardNumber.trim() : "",
         companyName: companyVisible ? companyName.trim() : "",
         purpose: purpose.trim(),
         visitorType,
@@ -372,6 +370,24 @@ export default function WalkInScreen() {
             placeholder="ชื่อ-นามสกุลผู้มาติดต่อ"
             placeholderTextColor="#9ca3af"
           />
+          <TouchableOpacity
+            style={[
+              styles.cardReaderBtn,
+              (cardReading || submitting) && styles.submitDisabled,
+            ]}
+            onPress={handleReadThaiIdCard}
+            disabled={cardReading || submitting}
+            activeOpacity={0.82}
+          >
+            {cardReading ? (
+              <ActivityIndicator color="#166534" />
+            ) : (
+              <Text style={styles.cardReaderText}>อ่านบัตรประชาชน (ชื่อ-นามสกุล)</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.helperText}>
+            ระบบจะอ่านเฉพาะชื่อและนามสกุล ไม่อ่านเลขบัตรประชาชน
+          </Text>
         </Field>
 
         {hostRequired && (
@@ -416,23 +432,6 @@ export default function WalkInScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
-          </Field>
-        )}
-
-        {idVisible && (
-          <Field label="รหัสบัตรประชาชน">
-            <TextInput
-              ref={idInputRef}
-              style={styles.input}
-              value={maskIdNumber(idCardNumber, idFocused)}
-              onChangeText={handleIdChange}
-              onFocus={() => setIdFocused(true)}
-              onBlur={() => setIdFocused(false)}
-              placeholder="กรอกรหัสบัตรประชาชน"
-              placeholderTextColor="#9ca3af"
-              keyboardType="number-pad"
-              maxLength={13}
-            />
           </Field>
         )}
 
@@ -912,6 +911,16 @@ const styles = StyleSheet.create({
   typeChipText: { color: "#6b7280", fontSize: 13, fontWeight: "700" },
   typeChipTextActive: { color: "#166534" },
   helperText: { color: "#6b7280", fontSize: 12, marginTop: 2 },
+  cardReaderBtn: {
+    backgroundColor: "#dcfce7",
+    borderWidth: 1,
+    borderColor: "#16a34a",
+    borderRadius: 8,
+    paddingVertical: 11,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  cardReaderText: { color: "#166534", fontSize: 14, fontWeight: "700" },
   dateInput: { justifyContent: "center" },
   dateText: { color: "#111827", fontSize: 15 },
   datePlaceholder: { color: "#9ca3af", fontSize: 15 },

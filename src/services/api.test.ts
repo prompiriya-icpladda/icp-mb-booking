@@ -1,17 +1,4 @@
-import { visitorTypeNeedsIdCard, visitorTypeNeedsCompany, maskIdNumber, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, presetExpiryDate, appointmentTimeMinutes, sortAppointmentsByLatest, EXPIRY_PRESET_OPTIONS, registerMobilePushToken } from "./api";
-
-describe("visitorTypeNeedsIdCard", () => {
-  it("returns false for rider and merchant", () => {
-    expect(visitorTypeNeedsIdCard("rider")).toBe(false);
-    expect(visitorTypeNeedsIdCard("merchant")).toBe(false);
-  });
-  it("returns true for the other visitor types", () => {
-    expect(visitorTypeNeedsIdCard("visitor")).toBe(true);
-    expect(visitorTypeNeedsIdCard("customer")).toBe(true);
-    expect(visitorTypeNeedsIdCard("vendor")).toBe(true);
-    expect(visitorTypeNeedsIdCard("supplier")).toBe(true);
-  });
-});
+import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, presetExpiryDate, appointmentTimeMinutes, sortAppointmentsByLatest, EXPIRY_PRESET_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees } from "./api";
 
 describe("visitorTypeNeedsCompany", () => {
   it("returns false only for merchant", () => {
@@ -26,40 +13,30 @@ describe("visitorTypeNeedsCompany", () => {
   });
 });
 
-describe("maskIdNumber - while typing (focused)", () => {
-  it("shows the first two digits as typed", () => {
-    expect(maskIdNumber("1", true)).toBe("1");
-    expect(maskIdNumber("17", true)).toBe("17");
+describe("searchHrEmployees", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
-  it("reveals only the latest digit and masks earlier middle digits", () => {
-    expect(maskIdNumber("173", true)).toBe("173");
-    expect(maskIdNumber("1734", true)).toBe("17x4");
-    expect(maskIdNumber("17345", true)).toBe("17xx5");
-    expect(maskIdNumber("173456", true)).toBe("17xxx6");
-  });
-  it("masks all middle digits when full and focused (only last digit shown)", () => {
-    expect(maskIdNumber("1734567890139", true)).toBe("17xxxxxxxxxx9");
-  });
-});
 
-describe("maskIdNumber - at rest (blurred)", () => {
-  it("shows first two and last two digits", () => {
-    expect(maskIdNumber("1734567890139", false)).toBe("17xxxxxxxxx39");
-  });
-  it("shows everything when four digits or fewer", () => {
-    expect(maskIdNumber("1734", false)).toBe("1734");
-  });
-  it("masks the middle once longer than four", () => {
-    expect(maskIdNumber("17345", false)).toBe("17x45");
-  });
-  it("returns empty string for empty input", () => {
-    expect(maskIdNumber("", false)).toBe("");
-    expect(maskIdNumber("", true)).toBe("");
-  });
-  it("shows everything for raw lengths 1 to 3 (nothing to mask)", () => {
-    expect(maskIdNumber("1", false)).toBe("1");
-    expect(maskIdNumber("17", false)).toBe("17");
-    expect(maskIdNumber("173", false)).toBe("173");
+  it("returns only monthly employees from HR emp_type", async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      json: async () => [
+        { employeeCode: "M001", employeeName: "สมชาย รายเดือน", emp_type: "รายเดือน" },
+        { employeeCode: "D001", employeeName: "สมหญิง รายวัน", emp_type: "รายวัน" },
+        { employeeCode: "U001", employeeName: "สมปอง ไม่ระบุ" },
+      ],
+    }));
+    (global as any).fetch = fetchMock;
+
+    const employees = await searchHrEmployees("สม");
+
+    expect(employees.map((employee) => employee.employeeCode)).toEqual(["M001"]);
+    expect(employees[0]).toMatchObject({
+      employeeCode: "M001",
+      name: "สมชาย รายเดือน",
+      empType: "รายเดือน",
+    });
   });
 });
 
@@ -268,6 +245,39 @@ describe("registerMobilePushToken", () => {
           platform: "android",
         }),
       },
+    );
+  });
+});
+
+describe("createWalkInVisit", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("does not send or log national ID numbers", async () => {
+    const fetchMock = jest.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      text: async () => JSON.stringify({ _id: "visit-1" }),
+    }));
+    const logMock = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    (global as any).fetch = fetchMock;
+
+    await createWalkInVisit({
+      visitorName: "สมชาย ใจดี",
+      hostEmployeeCode: "EMP001",
+      hostName: "Host User",
+      idCardNumber: "1234567890123",
+      companyName: "บริษัท ก",
+      hasVehicle: false,
+      source: "mobile-walk-in",
+    } as any);
+
+    const requestInit = fetchMock.mock.calls[0]![1];
+    const requestBody = JSON.parse(String(requestInit.body));
+    expect(requestBody).not.toHaveProperty("idCardNumber");
+    expect(logMock).toHaveBeenCalledWith(
+      "createWalkInVisit payload",
+      expect.not.objectContaining({ idCardNumberMasked: expect.any(String) }),
     );
   });
 });
