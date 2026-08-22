@@ -75,7 +75,7 @@ export default function WalkInScreen() {
   const [qrImageError, setQrImageError] = useState(false);
   const cameraRef = useRef<CameraView>(null);
 
-  // rider / แม่ค้า มาขายของ ไม่ต้องเลือกผู้ที่ต้องการพบ
+  // แม่ค้ามาขายของ ไม่ต้องเลือกผู้ที่ต้องการพบ
   const hostRequired = visitorTypeNeedsHost(visitorType);
   const companyVisible = visitorTypeNeedsCompany(visitorType);
 
@@ -527,7 +527,7 @@ export default function WalkInScreen() {
             />
           </View>
           <Text style={styles.helperText}>
-            QR ระยะยาวสามารถสแกนซ้ำได้ เหมาะกับ rider / แม่ค้า / ผู้รับเหมาที่มาประจำ
+            QR ระยะยาวสามารถสแกนซ้ำได้ เหมาะกับแม่ค้า / ผู้รับเหมาที่มาประจำ
           </Text>
         </Field>
 

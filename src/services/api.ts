@@ -35,6 +35,8 @@ export interface CheckinResult {
   visitorType?: string;
   visitorTypeValue?: VisitorType;
   canCheckout?: boolean;
+  completionRequestedAt?: string | null;
+  completedAt?: string | null;
   qrMode?: VisitorQrMode;
   createdByName?: string;
   appointmentDate?: string;
@@ -73,9 +75,22 @@ export async function checkinAppointment(id: string): Promise<CheckinResult> {
   return res.json();
 }
 
-// สแกนซ้ำ rider/แม่ค้า ที่ยัง "มาแล้ว" (ยังเช็คเอาท์ได้) → ให้เด้งไปหน้าเช็คเอาท์
+// สแกนซ้ำแม่ค้า/รายการเดิมที่ยัง "มาแล้ว" (ยังเช็คเอาท์ได้) → ให้เด้งไปหน้าเช็คเอาท์
 export function shouldRouteToCheckout(res: CheckinResult): boolean {
   return !!(res.success && res.alreadyCheckedIn && res.canCheckout);
+}
+
+export function checkinResultPresentation(res: CheckinResult): {
+  icon: string;
+  title: string;
+  color: string;
+} {
+  if (res.completedAt) {
+    return { icon: "✅", title: "เสร็จสิ้นสำเร็จ", color: "#16a34a" };
+  }
+  return res.alreadyCheckedIn
+    ? { icon: "⚠️", title: "เช็คอินซ้ำ", color: "#d97706" }
+    : { icon: "✅", title: "เช็คอินสำเร็จ", color: "#16a34a" };
 }
 
 // URL ของรูป QR (PNG) ที่ server สร้างให้ — ใช้แสดงในแอปหลังบันทึกนัดหมายระยะยาว
@@ -83,7 +98,7 @@ export function visitorQrUrl(id: string): string {
   return `${API_URL}/visitor-appointments/${id}/qr`;
 }
 
-// สแกนออก — ทำเครื่องหมายว่า rider/แม่ค้า "ไปแล้ว" (รองรับเฉพาะ rider/merchant ฝั่ง backend)
+// สแกนออก — ทำเครื่องหมายว่าแม่ค้า/รายการเดิม "ไปแล้ว" (รองรับเฉพาะกลุ่มไม่มี host ฝั่ง backend)
 export async function checkoutAppointment(id: string): Promise<CheckoutResult> {
   const res = await fetch(`${API_URL}/visitor-appointments/${id}/checkout`, {
     method: "POST",
@@ -103,6 +118,7 @@ export interface TodayAppointment {
   hasVehicle: boolean;
   licensePlate: string;
   checkedInAt: string | null;
+  completionRequestedAt?: string | null;
   visitorCount: number;
   createdByName: string;
   qrMode?: VisitorQrMode;
@@ -121,19 +137,20 @@ export function longTermStatus(
   return "registered";
 }
 
-export type NormalStatus = "pending" | "checked-in" | "completed";
+export type NormalStatus = "pending" | "checked-in" | "completion-requested" | "completed";
 
 // อนุมานสถานะนัดหมายปกติ (single-use) — completedAt มาจาก host กด "เสร็จสิ้น" ใน LINE
 // (completedAt ชนะ checkedInAt เผื่อกรณีไม่ได้สแกนเช็คอินแต่ host ปิดงานแล้ว)
 export function normalStatus(
-  a: Pick<TodayAppointment, "checkedInAt" | "completedAt">,
+  a: Pick<TodayAppointment, "checkedInAt" | "completionRequestedAt" | "completedAt">,
 ): NormalStatus {
   if (a.completedAt) return "completed";
+  if (a.completionRequestedAt) return "completion-requested";
   if (a.checkedInAt) return "checked-in";
   return "pending";
 }
 
-// เลือกเช็คเอาท์ในแอปได้เฉพาะ rider/แม่ค้า (ไม่มี host) ที่สถานะ "มาแล้ว"
+// เลือกเช็คเอาท์ในแอปได้เฉพาะแม่ค้า/รายการเดิมแบบไม่มี host ที่สถานะ "มาแล้ว"
 export function isLongTermCheckoutable(
   a: Pick<TodayAppointment, "checkedInAt" | "completedAt" | "visitorType">,
 ): boolean {
@@ -155,7 +172,7 @@ export type LongTermCardAction = "detail" | "scan" | "select";
 
 // ตัดสินว่าแตะการ์ด long-term แล้วทำอะไร (pure → unit test ได้)
 //  - select mode: เลือก
-//  - มาแล้ว + rider/แม่ค้า: เปิดหน้ารายละเอียด
+//  - มาแล้ว + แม่ค้า/รายการเดิมแบบไม่มี host: เปิดหน้ารายละเอียด
 //  - อื่นๆ: ไปสแกน (เหมือนเดิม)
 export function longTermCardAction(
   a: Pick<TodayAppointment, "checkedInAt" | "completedAt" | "visitorType">,
@@ -392,7 +409,7 @@ export async function searchHrEmployees(
 }
 
 // ประเภทผู้มาติดต่อ — ใช้ value/label ชุดเดียวกับฟอร์มเว็บ ICPBooking
-// (เว็บตัด rider/merchant ออกแล้วให้มาเลือกใน MB ตัวนี้ จึงรวมครบทั้ง 6)
+// rider ถูกถอดจากตัวเลือกใหม่แล้ว แต่ยังคง type ไว้เพื่อรองรับรายการเดิมที่ API อาจส่งกลับมา
 export type VisitorType =
   | "visitor"
   | "customer"
@@ -408,7 +425,6 @@ export const VISITOR_TYPE_OPTIONS: { value: VisitorType; label: string }[] = [
   { value: "customer", label: "customer ลูกค้า" },
   { value: "vendor", label: "vendor ผู้รับเหมา/ช่าง" },
   { value: "supplier", label: "supplier คนส่งของ" },
-  { value: "rider", label: "rider" },
   { value: "merchant", label: "แม่ค้า" },
 ];
 
@@ -440,7 +456,7 @@ export function presetExpiryDate(
   return d;
 }
 
-// rider / แม่ค้า มาขายของ ไม่ได้มาพบใคร จึงไม่ต้องระบุผู้ที่ต้องการพบ (host)
+// แม่ค้า/รายการ rider เดิม ไม่ได้มาพบใคร จึงไม่ต้องระบุผู้ที่ต้องการพบ (host)
 export function visitorTypeNeedsHost(visitorType: VisitorType): boolean {
   return visitorType !== "rider" && visitorType !== "merchant";
 }

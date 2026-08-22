@@ -10,6 +10,7 @@ import {
 import { AppText as Text } from "../theme/typography";
 import {
   checkinAppointment,
+  checkinResultPresentation,
   CheckinResult,
   shouldRouteToCheckout,
 } from "../services/api";
@@ -58,10 +59,11 @@ export default function ScannerScreen({
         return; // ข้าม modal — กำลังเด้งไปหน้าแจ้งเตือนเพื่อเช็คเอาท์ (อย่า setState ต่อ: หน้านี้กำลังจะ unmount)
       }
       if (res.success) {
+        const presentation = checkinResultPresentation(res);
         setResult({
-          icon: res.alreadyCheckedIn ? "⚠️" : "✅",
-          title: res.alreadyCheckedIn ? "เช็คอินซ้ำ" : "เช็คอินสำเร็จ",
-          color: res.alreadyCheckedIn ? "#d97706" : "#16a34a",
+          icon: presentation.icon,
+          title: presentation.title,
+          color: presentation.color,
           data: res,
         });
       } else {

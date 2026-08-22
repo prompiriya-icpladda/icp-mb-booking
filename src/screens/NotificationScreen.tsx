@@ -276,7 +276,7 @@ export default function NotificationScreen({
             </Text>
           </TouchableOpacity>
           {selectMode && (
-            <Text style={styles.selectHint}>เลือก rider/แม่ค้า ที่ "มาแล้ว"</Text>
+            <Text style={styles.selectHint}>เลือกแม่ค้า ที่ "มาแล้ว"</Text>
           )}
         </View>
       )}
@@ -410,7 +410,7 @@ function AppointmentCard({
   // long-term: longTermCardAction ตัดสิน select/detail/scan; การ์ดปกติ: สแกนเหมือนเดิม
   const wantsDetail = isLongTerm && longTermCardAction(item, selectMode) === "detail";
 
-  // โหมดเลือก: แตะเพื่อเลือก; "มาแล้ว" rider/แม่ค้า: เปิดรายละเอียด; อื่นๆ: สแกน
+  // โหมดเลือก: แตะเพื่อเลือก; "มาแล้ว" แม่ค้า/รายการเดิมแบบไม่มี host: เปิดรายละเอียด; อื่นๆ: สแกน
   const tappable = selectMode
     ? selectable
     : wantsDetail
@@ -558,7 +558,13 @@ function longTermBadgeStyle(s: LongTermStatus) {
 }
 
 function normalLabel(s: NormalStatus) {
-  return s === "pending" ? "รอเช็คอิน" : s === "checked-in" ? "เช็คอินแล้ว" : "เสร็จสิ้น";
+  return s === "pending"
+    ? "รอเช็คอิน"
+    : s === "checked-in"
+      ? "เช็คอินแล้ว"
+      : s === "completion-requested"
+        ? "รอสแกนเสร็จสิ้น"
+        : "เสร็จสิ้น";
 }
 
 function normalBadgeStyle(s: NormalStatus) {
@@ -566,7 +572,9 @@ function normalBadgeStyle(s: NormalStatus) {
     ? styles.statusPending
     : s === "checked-in"
       ? styles.statusChecked
-      : styles.statusCheckedOut;
+      : s === "completion-requested"
+        ? styles.statusCompletionRequested
+        : styles.statusCheckedOut;
 }
 
 function normalTextStyle(s: NormalStatus) {
@@ -574,7 +582,9 @@ function normalTextStyle(s: NormalStatus) {
     ? styles.statusPendingText
     : s === "checked-in"
       ? styles.statusCheckedText
-      : styles.statusCheckedOutText;
+      : s === "completion-requested"
+        ? styles.statusCompletionRequestedText
+        : styles.statusCheckedOutText;
 }
 
 function longTermTextStyle(s: LongTermStatus) {
@@ -667,10 +677,12 @@ const styles = StyleSheet.create({
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
   statusChecked: { backgroundColor: "#dcfce7" },
   statusPending: { backgroundColor: "#f3f4f6" },
+  statusCompletionRequested: { backgroundColor: "#ede9fe" },
   statusCheckedOut: { backgroundColor: "#e5e7eb" },
   statusText: { fontSize: 11, fontWeight: "600" },
   statusCheckedText: { color: "#16a34a" },
   statusPendingText: { color: "#6b7280" },
+  statusCompletionRequestedText: { color: "#7c3aed" },
   statusCheckedOutText: { color: "#374151" },
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
   pill: {

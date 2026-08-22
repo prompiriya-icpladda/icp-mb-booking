@@ -1,4 +1,10 @@
-import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, presetExpiryDate, appointmentTimeMinutes, sortAppointmentsByLatest, EXPIRY_PRESET_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees } from "./api";
+import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, checkinResultPresentation, presetExpiryDate, appointmentTimeMinutes, sortAppointmentsByLatest, EXPIRY_PRESET_OPTIONS, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees } from "./api";
+
+describe("VISITOR_TYPE_OPTIONS", () => {
+  it("does not offer rider for new walk-in registrations", () => {
+    expect(VISITOR_TYPE_OPTIONS.map((option) => option.value)).not.toContain("rider");
+  });
+});
 
 describe("visitorTypeNeedsCompany", () => {
   it("returns false only for merchant", () => {
@@ -68,6 +74,15 @@ describe("normalStatus", () => {
     expect(
       normalStatus({ checkedInAt: "2026-08-07T02:00:00Z", completedAt: "2026-08-07T04:00:00Z" }),
     ).toBe("completed");
+  });
+  it("returns 'completion-requested' while waiting for AP scanner to scan out", () => {
+    expect(
+      normalStatus({
+        checkedInAt: "2026-08-07T02:00:00Z",
+        completionRequestedAt: "2026-08-07T03:00:00Z",
+        completedAt: null,
+      }),
+    ).toBe("completion-requested");
   });
   it("returns 'completed' even when the check-in scan was missed", () => {
     expect(normalStatus({ checkedInAt: null, completedAt: "2026-08-07T04:00:00Z" })).toBe("completed");
@@ -177,6 +192,18 @@ describe("shouldRouteToCheckout", () => {
   });
   it("returns false for an empty result", () => {
     expect(shouldRouteToCheckout({})).toBe(false);
+  });
+});
+
+describe("checkinResultPresentation", () => {
+  it("shows a successful completion when AP scanner scans after host requested completion", () => {
+    expect(
+      checkinResultPresentation({
+        success: true,
+        alreadyCheckedIn: true,
+        completedAt: "2026-08-07T04:00:00Z",
+      }),
+    ).toEqual({ icon: "✅", title: "เสร็จสิ้นสำเร็จ", color: "#16a34a" });
   });
 });
 

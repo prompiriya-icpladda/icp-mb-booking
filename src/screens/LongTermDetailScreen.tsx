@@ -11,7 +11,7 @@ import { AppText as Text } from "../theme/typography";
 import { checkoutAppointment, TodayAppointment, VisitorType } from "../services/api";
 
 function visitorTypeLabel(t?: VisitorType): string {
-  if (t === "rider") return "Rider";
+  if (t === "rider") return "รายการเดิม";
   if (t === "merchant") return "แม่ค้า";
   return t ?? "-";
 }
