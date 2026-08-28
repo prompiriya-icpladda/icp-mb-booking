@@ -103,29 +103,7 @@ export const PDPA_CONSENT_TEXT = `# ความยินยอมในกา�
 
 ข้าพเจ้ารับทราบว่าข้อมูล **ชื่อ–นามสกุล** อาจถูกอ่านจากบัตรประจำตัวประชาชนผ่านเครื่องอ่านบัตรที่บริษัทจัดเตรียมไว้ และข้อมูลดังกล่าว รวมถึงข้อมูลวันและเวลาเข้า–ออก จะถูกนำไปใช้เพื่อการบันทึก ตรวจสอบ รวบรวม และวิเคราะห์ข้อมูลที่เกี่ยวข้องกับการรักษาความปลอดภัยภายในบริษัทตามวัตถุประสงค์ที่ระบุไว้ข้างต้น
 
-ข้าพเจ้าจึงแสดงความประสงค์ดังต่อไปนี้
-
-☐ **ข้าพเจ้ายินยอม** ให้บริษัทเก็บรวบรวม ใช้ และจัดเก็บข้อมูลส่วนบุคคลของข้าพเจ้าตามรายละเอียดและวัตถุประสงค์ที่ระบุไว้ในข้อความนี้
-
-☐ **ข้าพเจ้าไม่ยินยอม** ให้บริษัทเก็บรวบรวม ใช้ และจัดเก็บข้อมูลตามความยินยอมนี้
-
-การกดปุ่ม **“ยินยอม”** หรือการดำเนินการใด ๆ ที่ระบบกำหนดเพื่อยืนยันความยินยอม ถือเป็นการแสดงเจตนาในการให้ความยินยอมทางอิเล็กทรอนิกส์ของข้าพเจ้า
-
-**วันที่ให้ความยินยอม:** ระบบจะบันทึกวันที่และเวลาที่ท่านให้ความยินยอม
-
-**สถานะความยินยอม:** ยินยอม / ไม่ยินยอม
-
-**ผู้ควบคุมข้อมูลส่วนบุคคล:** ไอ ซี พี ลัดดา จำกัด
-
-**ที่อยู่:** 151 หมู่ที่ 8 ตำบลสามควายเผือก อำเภอเมืองนครปฐม จ.นครปฐม 73000
-
-**ช่องทางติดต่อ:** 0625056166
-
----
-
-**ข้าพเจ้ายืนยันว่าได้อ่านและเข้าใจรายละเอียดข้างต้นแล้ว**
-
-**[ ไม่ยินยอม ]    [ ยินยอม ]**`;
+หมายเหตุ: การกดปุ่ม **“ยินยอม”** หรือการดำเนินการใด ๆ ที่ระบบกำหนดเพื่อยืนยันความยินยอม ถือเป็นการแสดงเจตนาในการให้ความยินยอมทางอิเล็กทรอนิกส์ของข้าพเจ้า`;
 
 export type PdpaSignaturePoint = { x: number; y: number };
 export type PdpaSignatureStroke = PdpaSignaturePoint[];
@@ -135,6 +113,12 @@ export interface PdpaSignaturePayload {
   width: number;
   height: number;
   strokes: PdpaSignatureStroke[];
+}
+
+export interface PdpaScrollMetrics {
+  layoutHeight: number;
+  contentHeight: number;
+  offsetY: number;
 }
 
 function roundPoint(value: number) {
@@ -161,4 +145,14 @@ export function buildPdpaSignaturePayload(
 
 export function hasPdpaSignature(signature?: PdpaSignaturePayload | null): boolean {
   return Array.isArray(signature?.strokes) && signature.strokes.some((stroke) => stroke.length > 0);
+}
+
+export function isPdpaScrollAtEnd(metrics: PdpaScrollMetrics, threshold = 12): boolean {
+  const layoutHeight = Math.max(0, metrics.layoutHeight || 0);
+  const contentHeight = Math.max(0, metrics.contentHeight || 0);
+  const offsetY = Math.max(0, metrics.offsetY || 0);
+
+  if (layoutHeight <= 0 || contentHeight <= 0) return false;
+  if (contentHeight <= layoutHeight + threshold) return true;
+  return layoutHeight + offsetY >= contentHeight - threshold;
 }

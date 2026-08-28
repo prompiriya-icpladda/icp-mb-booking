@@ -31,13 +31,20 @@ import { readThaiIdCardName } from "../services/thaiIdCard";
 import {
   buildPdpaSignaturePayload,
   hasPdpaSignature,
+  isPdpaScrollAtEnd,
   PDPA_CONSENT_TEXT,
   PDPA_CONSENT_VERSION,
 } from "../utils/pdpaConsent";
-import type { PdpaSignaturePoint, PdpaSignatureStroke } from "../utils/pdpaConsent";
+import type {
+  PdpaScrollMetrics,
+  PdpaSignaturePoint,
+  PdpaSignatureStroke,
+} from "../utils/pdpaConsent";
 
 const MIN_VEHICLE_COUNT = 1;
 const SIGNATURE_POINT_MIN_DISTANCE = 2;
+
+type PdpaStep = "consent" | "signature";
 
 export default function WalkInScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -52,6 +59,8 @@ export default function WalkInScreen() {
   const [includeDepartmentRelatedEmployees, setIncludeDepartmentRelatedEmployees] =
     useState(true);
   const [pdpaModalOpen, setPdpaModalOpen] = useState(false);
+  const [pdpaStep, setPdpaStep] = useState<PdpaStep>("consent");
+  const [pdpaTextScrolledToEnd, setPdpaTextScrolledToEnd] = useState(false);
   const [pdpaConsentAccepted, setPdpaConsentAccepted] = useState(false);
   const [pdpaConsentedAt, setPdpaConsentedAt] = useState("");
   const [pdpaSignatureStrokes, setPdpaSignatureStrokes] = useState<PdpaSignatureStroke[]>([]);
@@ -73,13 +82,19 @@ export default function WalkInScreen() {
   } | null>(null);
   const cameraRef = useRef<CameraView>(null);
   const signatureBoxSizeRef = useRef(signatureBoxSize);
+  const pdpaScrollMetricsRef = useRef<PdpaScrollMetrics>({
+    layoutHeight: 0,
+    contentHeight: 0,
+    offsetY: 0,
+  });
 
   // แม่ค้ามาขายของ ไม่ต้องเลือกผู้ที่ต้องการพบ
   const hostRequired = visitorTypeNeedsHost(visitorType);
   const companyVisible = visitorTypeNeedsCompany(visitorType);
   const pdpaSignature = buildPdpaSignaturePayload(pdpaSignatureStrokes, signatureBoxSize);
   const pdpaSignatureReady = hasPdpaSignature(pdpaSignature);
-  const pdpaReady = pdpaConsentAccepted && pdpaSignatureReady && !!pdpaConsentedAt;
+  const pdpaConsentStepReady = pdpaTextScrolledToEnd && pdpaConsentAccepted;
+  const pdpaReady = pdpaConsentStepReady && pdpaSignatureReady && !!pdpaConsentedAt;
 
   const signatureResponder = useRef(
     PanResponder.create({
@@ -144,9 +159,12 @@ export default function WalkInScreen() {
     setHostResults([]);
     setIncludeDepartmentRelatedEmployees(true);
     setPdpaModalOpen(false);
+    setPdpaStep("consent");
+    setPdpaTextScrolledToEnd(false);
     setPdpaConsentAccepted(false);
     setPdpaConsentedAt("");
     setPdpaSignatureStrokes([]);
+    pdpaScrollMetricsRef.current = { layoutHeight: 0, contentHeight: 0, offsetY: 0 };
     setHasVehicle(false);
     setVehicleCount(1);
     setLicensePlates([""]);
@@ -163,8 +181,20 @@ export default function WalkInScreen() {
 
   function pdpaMissingMessage() {
     if (!pdpaConsentAccepted) return "กรุณายินยอม PDPA ก่อนอ่านบัตรประชาชน";
+    if (!pdpaTextScrolledToEnd) return "กรุณาเลื่อนอ่านรายละเอียด PDPA ให้จบก่อนอ่านบัตรประชาชน";
     if (!pdpaSignatureReady) return "กรุณาลงลายเซ็น PDPA ก่อนอ่านบัตรประชาชน";
     return "กรุณากดยืนยัน PDPA ก่อนอ่านบัตรประชาชน";
+  }
+
+  function openPdpaModal() {
+    setPdpaStep(pdpaConsentStepReady ? "signature" : "consent");
+    setPdpaModalOpen(true);
+  }
+
+  function updatePdpaScrollMetrics(nextMetrics: Partial<PdpaScrollMetrics>) {
+    const metrics = { ...pdpaScrollMetricsRef.current, ...nextMetrics };
+    pdpaScrollMetricsRef.current = metrics;
+    if (isPdpaScrollAtEnd(metrics)) setPdpaTextScrolledToEnd(true);
   }
 
   function signaturePointFromEvent(event: { nativeEvent: { locationX: number; locationY: number } }) {
@@ -205,6 +235,14 @@ export default function WalkInScreen() {
     setPdpaSignatureStrokes([]);
   }
 
+  function cancelPdpaConsent() {
+    setPdpaModalOpen(false);
+    setPdpaStep("consent");
+    setPdpaConsentAccepted(false);
+    setPdpaConsentedAt("");
+    setPdpaSignatureStrokes([]);
+  }
+
   function togglePdpaConsent() {
     setPdpaConsentAccepted((current) => {
       if (current) setPdpaConsentedAt("");
@@ -212,8 +250,25 @@ export default function WalkInScreen() {
     });
   }
 
-  function confirmPdpaConsent() {
+  function goToPdpaSignatureStep() {
+    if (!pdpaTextScrolledToEnd) {
+      Alert.alert("ยังอ่าน PDPA ไม่จบ", "กรุณาเลื่อนอ่านรายละเอียด PDPA ให้จบก่อน");
+      return;
+    }
     if (!pdpaConsentAccepted) {
+      Alert.alert("ยังไม่ได้ยินยอม PDPA", "กรุณาติ๊กยินยอมก่อน");
+      return;
+    }
+    setPdpaStep("signature");
+  }
+
+  function confirmPdpaConsent() {
+    if (!pdpaConsentStepReady) {
+      setPdpaStep("consent");
+      if (!pdpaTextScrolledToEnd) {
+        Alert.alert("ยังอ่าน PDPA ไม่จบ", "กรุณาเลื่อนอ่านรายละเอียด PDPA ให้จบก่อน");
+        return;
+      }
       Alert.alert("ยังไม่ได้ยินยอม PDPA", "กรุณาติ๊กยินยอมก่อนอ่านบัตรประชาชน");
       return;
     }
@@ -232,6 +287,7 @@ export default function WalkInScreen() {
           return (
             <View
               key={`${strokeIndex}-${pointIndex}`}
+              pointerEvents="none"
               style={[styles.signatureDot, { left: point.x - 2, top: point.y - 2 }]}
             />
           );
@@ -242,6 +298,7 @@ export default function WalkInScreen() {
         return (
           <View
             key={`${strokeIndex}-${pointIndex}`}
+            pointerEvents="none"
             style={[
               styles.signatureLine,
               {
@@ -262,7 +319,7 @@ export default function WalkInScreen() {
     if (!pdpaReady) {
       const text = pdpaMissingMessage();
       setMessage({ type: "error", text });
-      setPdpaModalOpen(true);
+      openPdpaModal();
       return;
     }
     setCardReading(true);
@@ -354,6 +411,7 @@ export default function WalkInScreen() {
     if (validationError) {
       setMessage({ type: "error", text: validationError });
       Alert.alert("ข้อมูลไม่ครบ", validationError);
+      if (!pdpaReady && validationError === pdpaMissingMessage()) openPdpaModal();
       return;
     }
     if (hostRequired && !host) return;
@@ -473,7 +531,7 @@ export default function WalkInScreen() {
           />
           <TouchableOpacity
             style={[styles.pdpaStatusCard, pdpaReady && styles.pdpaStatusCardReady]}
-            onPress={() => setPdpaModalOpen(true)}
+            onPress={openPdpaModal}
             activeOpacity={0.85}
           >
             <Text style={styles.pdpaStatusTitle}>
@@ -482,7 +540,7 @@ export default function WalkInScreen() {
             <Text style={styles.pdpaStatusText}>
               {pdpaReady
                 ? "ระบบพร้อมอ่านชื่อ-นามสกุลจากบัตรประชาชน"
-                : "กดเพื่ออ่านรายละเอียด ติ๊กยินยอม และลงลายเซ็น"}
+                : "กดเพื่ออ่านรายละเอียดให้จบ ติ๊กยินยอม แล้วลงลายเซ็น"}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -803,79 +861,140 @@ export default function WalkInScreen() {
         visible={pdpaModalOpen}
         animationType="slide"
         transparent
-        onRequestClose={() => setPdpaModalOpen(false)}
+        onRequestClose={cancelPdpaConsent}
       >
         <View style={styles.pdpaModalBackdrop}>
           <View style={styles.pdpaModalCard}>
-            <Text style={styles.pdpaModalTitle}>ยินยอม PDPA ก่อนอ่านบัตรประชาชน</Text>
-            <Text style={styles.pdpaModalSubTitle}>
-              กรุณาอ่านรายละเอียด ติ๊กยินยอม และลงลายเซ็นก่อนใช้เครื่องอ่านบัตร
-            </Text>
+            {pdpaStep === "consent" ? (
+              <>
+                <Text style={styles.pdpaModalTitle}>ยินยอม PDPA ก่อนอ่านบัตรประชาชน</Text>
+                <Text style={styles.pdpaModalSubTitle}>
+                  กรุณาเลื่อนอ่านรายละเอียดให้จบ แล้วติ๊กยินยอมเพื่อไปหน้าลายเซ็น
+                </Text>
 
-            <ScrollView style={styles.pdpaTextBox} nestedScrollEnabled>
-              <Text style={styles.pdpaConsentText}>{PDPA_CONSENT_TEXT}</Text>
-            </ScrollView>
+                <ScrollView
+                  style={styles.pdpaTextBox}
+                  contentContainerStyle={styles.pdpaTextContent}
+                  nestedScrollEnabled
+                  scrollEventThrottle={16}
+                  onLayout={(event) =>
+                    updatePdpaScrollMetrics({
+                      layoutHeight: event.nativeEvent.layout.height,
+                    })
+                  }
+                  onContentSizeChange={(_, height) =>
+                    updatePdpaScrollMetrics({ contentHeight: height })
+                  }
+                  onScroll={(event) =>
+                    updatePdpaScrollMetrics({
+                      layoutHeight: event.nativeEvent.layoutMeasurement.height,
+                      contentHeight: event.nativeEvent.contentSize.height,
+                      offsetY: event.nativeEvent.contentOffset.y,
+                    })
+                  }
+                >
+                  <Text style={styles.pdpaConsentText}>{PDPA_CONSENT_TEXT}</Text>
+                </ScrollView>
 
-            <TouchableOpacity
-              style={styles.pdpaConsentRow}
-              onPress={togglePdpaConsent}
-              activeOpacity={0.8}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: pdpaConsentAccepted }}
-            >
-              <View
-                style={[
-                  styles.checkboxBox,
-                  pdpaConsentAccepted && styles.checkboxBoxActive,
-                ]}
-              >
-                {pdpaConsentAccepted && <Text style={styles.checkboxMark}>✓</Text>}
-              </View>
-              <Text style={styles.pdpaConsentLabel}>
-                ข้าพเจ้ายินยอมให้บริษัทเก็บรวบรวม ใช้ และจัดเก็บข้อมูลส่วนบุคคลตามรายละเอียดนี้
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.pdpaScrollHint,
+                    pdpaTextScrolledToEnd && styles.pdpaScrollHintReady,
+                  ]}
+                >
+                  {pdpaTextScrolledToEnd
+                    ? "อ่านรายละเอียดครบแล้ว"
+                    : "เลื่อนอ่านรายละเอียดให้จบก่อน ปุ่มถัดไปจึงจะกดได้"}
+                </Text>
 
-            <Text style={styles.signatureLabel}>ลายเซ็นผู้มาติดต่อ</Text>
-            <View
-              style={styles.signatureBox}
-              onLayout={(event) =>
-                updateSignatureLayout(
-                  event.nativeEvent.layout.width,
-                  event.nativeEvent.layout.height,
-                )
-              }
-              {...signatureResponder.panHandlers}
-            >
-              {renderSignatureInk()}
-              {!pdpaSignatureReady && (
-                <Text style={styles.signaturePlaceholder}>เซ็นชื่อในช่องนี้</Text>
-              )}
-            </View>
+                <TouchableOpacity
+                  style={styles.pdpaConsentRow}
+                  onPress={togglePdpaConsent}
+                  activeOpacity={0.8}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: pdpaConsentAccepted }}
+                >
+                  <View
+                    style={[
+                      styles.checkboxBox,
+                      pdpaConsentAccepted && styles.checkboxBoxActive,
+                    ]}
+                  >
+                    {pdpaConsentAccepted && <Text style={styles.checkboxMark}>✓</Text>}
+                  </View>
+                  <Text style={styles.pdpaConsentLabel}>
+                    ข้าพเจ้ายินยอมให้บริษัทเก็บรวบรวม ใช้ และจัดเก็บข้อมูลส่วนบุคคลตามรายละเอียดนี้
+                  </Text>
+                </TouchableOpacity>
 
-            <View style={styles.pdpaInlineActions}>
-              <TouchableOpacity style={styles.signatureClearBtn} onPress={clearPdpaSignature}>
-                <Text style={styles.signatureClearText}>ล้างลายเซ็น</Text>
-              </TouchableOpacity>
-            </View>
+                <View style={styles.pdpaModalActions}>
+                  <TouchableOpacity
+                    style={styles.pdpaCancelBtn}
+                    onPress={cancelPdpaConsent}
+                  >
+                    <Text style={styles.pdpaCancelText}>ยกเลิก</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.pdpaConfirmBtn,
+                      !pdpaConsentStepReady && styles.submitDisabled,
+                    ]}
+                    onPress={goToPdpaSignatureStep}
+                    disabled={!pdpaConsentStepReady}
+                    accessibilityState={{ disabled: !pdpaConsentStepReady }}
+                  >
+                    <Text style={styles.pdpaConfirmText}>ถัดไป</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.pdpaModalTitle}>ลงลายเซ็น PDPA</Text>
+                <Text style={styles.pdpaModalSubTitle}>
+                  กรุณาลงลายเซ็นเพื่อยืนยันความยินยอม ก่อนอ่านบัตรประชาชน
+                </Text>
 
-            <View style={styles.pdpaModalActions}>
-              <TouchableOpacity
-                style={styles.pdpaCancelBtn}
-                onPress={() => setPdpaModalOpen(false)}
-              >
-                <Text style={styles.pdpaCancelText}>ยกเลิก</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.pdpaConfirmBtn,
-                  (!pdpaConsentAccepted || !pdpaSignatureReady) && styles.submitDisabled,
-                ]}
-                onPress={confirmPdpaConsent}
-              >
-                <Text style={styles.pdpaConfirmText}>ยืนยัน</Text>
-              </TouchableOpacity>
-            </View>
+                <Text style={styles.signatureLabel}>ลายเซ็นผู้มาติดต่อ</Text>
+                <View
+                  style={styles.signatureBox}
+                  onLayout={(event) =>
+                    updateSignatureLayout(
+                      event.nativeEvent.layout.width,
+                      event.nativeEvent.layout.height,
+                    )
+                  }
+                  {...signatureResponder.panHandlers}
+                >
+                  {renderSignatureInk()}
+                  {!pdpaSignatureReady && (
+                    <Text pointerEvents="none" style={styles.signaturePlaceholder}>
+                      เซ็นชื่อในช่องนี้
+                    </Text>
+                  )}
+                </View>
+
+                <View style={styles.pdpaInlineActions}>
+                  <TouchableOpacity style={styles.signatureClearBtn} onPress={clearPdpaSignature}>
+                    <Text style={styles.signatureClearText}>ล้างลายเซ็น</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.pdpaModalActions}>
+                  <TouchableOpacity
+                    style={styles.pdpaCancelBtn}
+                    onPress={() => setPdpaStep("consent")}
+                  >
+                    <Text style={styles.pdpaCancelText}>ย้อนกลับ</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.pdpaConfirmBtn, !pdpaSignatureReady && styles.submitDisabled]}
+                    onPress={confirmPdpaConsent}
+                  >
+                    <Text style={styles.pdpaConfirmText}>ยืนยัน</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -1185,9 +1304,11 @@ const styles = StyleSheet.create({
     borderColor: "#e5e7eb",
     borderRadius: 10,
     backgroundColor: "#f9fafb",
-    padding: 10,
   },
+  pdpaTextContent: { padding: 10 },
   pdpaConsentText: { color: "#374151", fontSize: 12, lineHeight: 19 },
+  pdpaScrollHint: { color: "#92400e", fontSize: 12, lineHeight: 17 },
+  pdpaScrollHintReady: { color: "#166534", fontWeight: "700" },
   pdpaConsentRow: {
     flexDirection: "row",
     alignItems: "flex-start",
