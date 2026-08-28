@@ -750,6 +750,9 @@ export default function WalkInScreen() {
             placeholderTextColor="#9ca3af"
             multiline
             numberOfLines={2}
+            returnKeyType="done"
+            blurOnSubmit
+            onSubmitEditing={Keyboard.dismiss}
           />
         </Field>
 
