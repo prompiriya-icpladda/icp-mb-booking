@@ -19,6 +19,7 @@ import {
 } from "../theme/typography";
 import {
   createWalkInVisit,
+  fetchRecentCompanyNames,
   HrEmployee,
   ocrLicensePlate,
   searchHrEmployees,
@@ -43,6 +44,8 @@ import type {
 
 const MIN_VEHICLE_COUNT = 1;
 const SIGNATURE_POINT_MIN_DISTANCE = 2;
+const RECENT_COMPANY_LIMIT = 30;
+const COMPANY_SUGGESTION_LIMIT = 8;
 
 type PdpaStep = "consent" | "signature";
 
@@ -50,6 +53,10 @@ export default function WalkInScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [visitorName, setVisitorName] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [recentCompanyNames, setRecentCompanyNames] = useState<string[]>([]);
+  const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
+  const [companyOptionsLoading, setCompanyOptionsLoading] = useState(false);
+  const [companyOptionsError, setCompanyOptionsError] = useState<string | null>(null);
   const [purpose, setPurpose] = useState("");
   const [visitorType, setVisitorType] = useState<VisitorType>("visitor");
   const [visitorCount, setVisitorCount] = useState(1);
@@ -91,6 +98,10 @@ export default function WalkInScreen() {
   // แม่ค้ามาขายของ ไม่ต้องเลือกผู้ที่ต้องการพบ
   const hostRequired = visitorTypeNeedsHost(visitorType);
   const companyVisible = visitorTypeNeedsCompany(visitorType);
+  const companyQuery = normalizeText(companyName);
+  const companySuggestions = recentCompanyNames
+    .filter((name) => !companyQuery || normalizeText(name).includes(companyQuery))
+    .slice(0, COMPANY_SUGGESTION_LIMIT);
   const pdpaSignature = buildPdpaSignaturePayload(pdpaSignatureStrokes, signatureBoxSize);
   const pdpaSignatureReady = hasPdpaSignature(pdpaSignature);
   const pdpaConsentStepReady = pdpaTextScrolledToEnd && pdpaConsentAccepted;
@@ -148,9 +159,39 @@ export default function WalkInScreen() {
     };
   }, [hostQuery, selectedHost]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setCompanyOptionsLoading(true);
+    setCompanyOptionsError(null);
+
+    fetchRecentCompanyNames("", RECENT_COMPANY_LIMIT)
+      .then((companies) => {
+        if (cancelled) return;
+        setRecentCompanyNames(companies);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCompanyOptionsError(
+          error instanceof Error ? error.message : "โหลดรายชื่อบริษัทล่าสุดไม่สำเร็จ",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setCompanyOptionsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!companyVisible) setCompanyDropdownOpen(false);
+  }, [companyVisible]);
+
   function resetForm() {
     setVisitorName("");
     setCompanyName("");
+    setCompanyDropdownOpen(false);
     setPurpose("");
     setVisitorType("visitor");
     setVisitorCount(1);
@@ -177,6 +218,26 @@ export default function WalkInScreen() {
   function handleVisitorTypeChange(next: VisitorType) {
     setVisitorType(next);
     if (!visitorTypeNeedsCompany(next)) setCompanyName("");
+  }
+
+  function handleCompanyNameChange(nextName: string) {
+    setCompanyName(nextName);
+    setCompanyDropdownOpen(true);
+  }
+
+  function pickCompanyName(nextName: string) {
+    setCompanyName(nextName);
+    setCompanyDropdownOpen(false);
+  }
+
+  function rememberRecentCompanyName(nextName: string) {
+    const normalizedName = nextName.trim();
+    if (!normalizedName) return;
+    const normalizedKey = normalizeText(normalizedName);
+    setRecentCompanyNames((current) => [
+      normalizedName,
+      ...current.filter((item) => normalizeText(item) !== normalizedKey),
+    ].slice(0, RECENT_COMPANY_LIMIT));
   }
 
   function pdpaMissingMessage() {
@@ -417,6 +478,7 @@ export default function WalkInScreen() {
     if (hostRequired && !host) return;
 
     const plates = hasVehicle ? activeLicensePlates() : [];
+    const normalizedCompanyName = companyVisible ? companyName.trim() : "";
 
     setSubmitting(true);
     setMessage(null);
@@ -435,7 +497,7 @@ export default function WalkInScreen() {
         visitingUserId: hostUserId,
         visitingUserName: host?.name ?? "",
         visitingUserNickname: host?.nickname,
-        companyName: companyVisible ? companyName.trim() : "",
+        companyName: normalizedCompanyName,
         purpose: purpose.trim(),
         visitorType,
         visitorCount,
@@ -452,6 +514,7 @@ export default function WalkInScreen() {
         pdpaSignature,
         source: "mobile-walk-in",
       });
+      rememberRecentCompanyName(normalizedCompanyName);
       resetForm();
       setMessage({ type: "ok", text: "บันทึกข้อมูลเรียบร้อย" });
     } catch (e) {
@@ -642,10 +705,39 @@ export default function WalkInScreen() {
             <TextInput
               style={styles.input}
               value={companyName}
-              onChangeText={setCompanyName}
-              placeholder="ชื่อบริษัท"
+              onChangeText={handleCompanyNameChange}
+              onFocus={() => setCompanyDropdownOpen(true)}
+              placeholder="เลือกจากรายการล่าสุดหรือพิมพ์ชื่อบริษัท"
               placeholderTextColor="#9ca3af"
             />
+            {companyOptionsLoading && (
+              <ActivityIndicator color="#16a34a" style={styles.inlineLoading} />
+            )}
+            {!!companyOptionsError && !companyOptionsLoading && (
+              <Text style={styles.hostError}>โหลดรายชื่อบริษัทไม่ได้ พิมพ์เองได้</Text>
+            )}
+            {companyDropdownOpen && !companyOptionsLoading && companySuggestions.length > 0 && (
+              <View style={styles.companyDropdown}>
+                {companySuggestions.map((name) => (
+                  <TouchableOpacity
+                    key={name}
+                    style={styles.companyItem}
+                    onPress={() => pickCompanyName(name)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.employeeName}>{name}</Text>
+                    <Text style={styles.employeeMeta}>จากรายการล่าสุด</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            {companyDropdownOpen &&
+              !companyOptionsLoading &&
+              !companyOptionsError &&
+              recentCompanyNames.length > 0 &&
+              companySuggestions.length === 0 && (
+                <Text style={styles.helperText}>ไม่มีในรายการล่าสุด พิมพ์ชื่อใหม่ได้</Text>
+              )}
           </Field>
         )}
 
@@ -1178,6 +1270,14 @@ const styles = StyleSheet.create({
   checkboxText: { color: "#166534", fontSize: 13, fontWeight: "700" },
   checkboxSubText: { color: "#6b7280", fontSize: 12, marginTop: 2 },
   employeeItem: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 8,
+    padding: 10,
+  },
+  companyDropdown: { gap: 6 },
+  companyItem: {
     backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: "#e5e7eb",

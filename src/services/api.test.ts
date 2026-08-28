@@ -1,4 +1,4 @@
-import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, checkinResultPresentation, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees } from "./api";
+import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, checkinResultPresentation, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames } from "./api";
 
 describe("VISITOR_TYPE_OPTIONS", () => {
   it("does not offer rider for new walk-in registrations", () => {
@@ -43,6 +43,35 @@ describe("searchHrEmployees", () => {
       name: "สมชาย รายเดือน",
       empType: "รายเดือน",
     });
+  });
+});
+
+describe("fetchRecentCompanyNames", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("loads recent saved company names for dropdown suggestions", async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({ companies: ["บริษัท ข", "บริษัท ก"] }),
+    }));
+    (global as any).fetch = fetchMock;
+
+    await expect(fetchRecentCompanyNames("ก+", 99)).resolves.toEqual(["บริษัท ข", "บริษัท ก"]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/walk-in-visitors/company-names?q=%E0%B8%81%2B&limit=50"),
+    );
+  });
+
+  it("ignores non-string company names from the API", async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({ companies: ["บริษัท ข", null, 12, ""] }),
+    }));
+    (global as any).fetch = fetchMock;
+
+    await expect(fetchRecentCompanyNames()).resolves.toEqual(["บริษัท ข"]);
   });
 });
 

@@ -474,6 +474,28 @@ export interface LicensePlateOcrResult {
   licensePlate?: string;
 }
 
+function normalizeRecentCompanyLimit(limit: number) {
+  if (!Number.isFinite(limit)) return 30;
+  return Math.max(1, Math.min(50, Math.floor(limit)));
+}
+
+export async function fetchRecentCompanyNames(
+  query = "",
+  limit = 30,
+): Promise<string[]> {
+  const params = new URLSearchParams();
+  const normalizedQuery = query.trim();
+  if (normalizedQuery) params.set("q", normalizedQuery);
+  params.set("limit", String(normalizeRecentCompanyLimit(limit)));
+
+  const res = await fetch(`${API_URL}/walk-in-visitors/company-names?${params.toString()}`);
+  const data = await parseJsonResponse<{ companies?: unknown }>(res);
+  if (!Array.isArray(data.companies)) return [];
+  return data.companies
+    .filter((company): company is string => typeof company === "string" && company.trim().length > 0)
+    .map((company) => company.trim());
+}
+
 export async function createWalkInVisit(
   payload: CreateWalkInVisitPayload,
 ): Promise<CreateWalkInVisitResult> {
