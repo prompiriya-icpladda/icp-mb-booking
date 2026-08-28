@@ -1,10 +1,8 @@
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -20,17 +18,12 @@ import {
 } from "../theme/typography";
 import {
   createWalkInVisit,
-  EXPIRY_PRESET_OPTIONS,
-  ExpiryPreset,
   HrEmployee,
   ocrLicensePlate,
-  presetExpiryDate,
   searchHrEmployees,
-  visitorQrUrl,
   VISITOR_TYPE_OPTIONS,
   visitorTypeNeedsCompany,
   visitorTypeNeedsHost,
-  VisitorQrMode,
   VisitorType,
 } from "../services/api";
 import { readThaiIdCardName } from "../services/thaiIdCard";
@@ -44,13 +37,11 @@ export default function WalkInScreen() {
   const [purpose, setPurpose] = useState("");
   const [visitorType, setVisitorType] = useState<VisitorType>("visitor");
   const [visitorCount, setVisitorCount] = useState(1);
-  const [qrMode, setQrMode] = useState<VisitorQrMode>("single-use");
-  const [expiryDate, setExpiryDate] = useState<Date | null>(null);
-  const [showExpiryPicker, setShowExpiryPicker] = useState(false);
-  const [expiryPreset, setExpiryPreset] = useState<ExpiryPreset>("1m");
   const [hostQuery, setHostQuery] = useState("");
   const [hostResults, setHostResults] = useState<HrEmployee[]>([]);
   const [selectedHost, setSelectedHost] = useState<HrEmployee | null>(null);
+  const [includeDepartmentRelatedEmployees, setIncludeDepartmentRelatedEmployees] =
+    useState(true);
   const [hostLoading, setHostLoading] = useState(false);
   const [hostError, setHostError] = useState<string | null>(null);
   const [hasVehicle, setHasVehicle] = useState(false);
@@ -66,13 +57,6 @@ export default function WalkInScreen() {
     type: "ok" | "error";
     text: string;
   } | null>(null);
-  const [qrModal, setQrModal] = useState<{
-    id: string;
-    visitorName: string;
-    visitorOrganization: string;
-    expiryDate: string;
-  } | null>(null);
-  const [qrImageError, setQrImageError] = useState(false);
   const cameraRef = useRef<CameraView>(null);
 
   // แม่ค้ามาขายของ ไม่ต้องเลือกผู้ที่ต้องการพบ
@@ -122,13 +106,10 @@ export default function WalkInScreen() {
     setPurpose("");
     setVisitorType("visitor");
     setVisitorCount(1);
-    setQrMode("single-use");
-    setExpiryDate(null);
-    setExpiryPreset("1m");
-    setShowExpiryPicker(false);
     setHostQuery("");
     setSelectedHost(null);
     setHostResults([]);
+    setIncludeDepartmentRelatedEmployees(true);
     setHasVehicle(false);
     setVehicleCount(1);
     setLicensePlates([""]);
@@ -141,16 +122,6 @@ export default function WalkInScreen() {
   function handleVisitorTypeChange(next: VisitorType) {
     setVisitorType(next);
     if (!visitorTypeNeedsCompany(next)) setCompanyName("");
-  }
-
-  function handleExpiryPreset(preset: ExpiryPreset) {
-    setExpiryPreset(preset);
-    if (preset === "custom") {
-      setShowExpiryPicker(true);
-    } else {
-      setShowExpiryPicker(false);
-      setExpiryDate(presetExpiryDate(preset));
-    }
   }
 
   async function handleReadThaiIdCard() {
@@ -214,7 +185,6 @@ export default function WalkInScreen() {
     if (!visitorName.trim()) return "กรุณากรอกชื่อผู้มาติดต่อ";
     if (hostRequired && !host) return "กรุณาเลือกผู้ที่ต้องการพบจาก HR";
     if (companyVisible && !companyName.trim()) return "กรุณากรอกชื่อบริษัท";
-    if (qrMode === "long-term" && !expiryDate) return "กรุณาเลือกวันหมดอายุ";
     if (hasVehicle) {
       if (vehicleCount < 1) return "กรุณาระบุจำนวนรถ";
       const plates = activeLicensePlates();
@@ -256,7 +226,7 @@ export default function WalkInScreen() {
       const hostUserId = host
         ? host.userId ?? host.employeeId ?? host.employeeCode
         : "";
-      const result = await createWalkInVisit({
+      await createWalkInVisit({
         visitorName: visitorName.trim(),
         hostEmployeeCode: host?.employeeCode ?? "",
         hostName: host?.name ?? "",
@@ -271,30 +241,17 @@ export default function WalkInScreen() {
         purpose: purpose.trim(),
         visitorType,
         visitorCount,
-        qrMode,
-        expiryDate:
-          qrMode === "long-term" && expiryDate
-            ? formatDateLocal(expiryDate)
-            : undefined,
         hasVehicle,
         vehicleCount: hasVehicle ? vehicleCount : 0,
         licensePlate: plates[0],
         licensePlates: plates,
+        includeDepartmentRelatedEmployees: hostRequired
+          ? includeDepartmentRelatedEmployees
+          : false,
         source: "mobile-walk-in",
       });
-      if (qrMode === "long-term" && result.id) {
-        setQrImageError(false);
-        setQrModal({
-          id: result.id,
-          visitorName: visitorName.trim(),
-          visitorOrganization: companyVisible ? companyName.trim() : "",
-          expiryDate: expiryDate ? formatDateLocal(expiryDate) : "",
-        });
-        resetForm();
-      } else {
-        resetForm();
-        setMessage({ type: "ok", text: "บันทึกข้อมูลเรียบร้อย" });
-      }
+      resetForm();
+      setMessage({ type: "ok", text: "บันทึกข้อมูลเรียบร้อย" });
     } catch (e) {
       const errorMessage =
         e instanceof Error ? e.message : "ไม่สามารถบันทึกข้อมูลได้";
@@ -415,6 +372,32 @@ export default function WalkInScreen() {
             {!!hostError && !hostLoading && (
               <Text style={styles.hostError}>{hostError}</Text>
             )}
+            <TouchableOpacity
+              style={styles.checkboxRow}
+              onPress={() =>
+                setIncludeDepartmentRelatedEmployees((current) => !current)
+              }
+              activeOpacity={0.8}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: includeDepartmentRelatedEmployees }}
+            >
+              <View
+                style={[
+                  styles.checkboxBox,
+                  includeDepartmentRelatedEmployees && styles.checkboxBoxActive,
+                ]}
+              >
+                {includeDepartmentRelatedEmployees && (
+                  <Text style={styles.checkboxMark}>✓</Text>
+                )}
+              </View>
+              <View style={styles.checkboxTextWrap}>
+                <Text style={styles.checkboxText}>
+                  เพิ่มบุคคลที่เกี่ยวข้องในแผนกเดียวกัน
+                </Text>
+                <Text style={styles.checkboxSubText}>เฉพาะพนักงานรายเดือน</Text>
+              </View>
+            </TouchableOpacity>
             {hostResults.map((item) => (
               <TouchableOpacity
                 key={item.employeeCode}
@@ -509,100 +492,6 @@ export default function WalkInScreen() {
             </TouchableOpacity>
           </View>
         </Field>
-
-        <Field label="รูปแบบ QR Code">
-          <View style={styles.segmentRow}>
-            <SegmentButton
-              active={qrMode === "single-use"}
-              label="ครั้งเดียว"
-              onPress={() => setQrMode("single-use")}
-            />
-            <SegmentButton
-              active={qrMode === "long-term"}
-              label="ระยะยาว"
-              onPress={() => {
-                setQrMode("long-term");
-                setExpiryDate((prev) => prev ?? presetExpiryDate("1m")!);
-              }}
-            />
-          </View>
-          <Text style={styles.helperText}>
-            QR ระยะยาวสามารถสแกนซ้ำได้ เหมาะกับแม่ค้า / ผู้รับเหมาที่มาประจำ
-          </Text>
-        </Field>
-
-        {qrMode === "long-term" && (
-          <Field label="วันหมดอายุ">
-            <View style={styles.typeRow}>
-              {EXPIRY_PRESET_OPTIONS.map((option) => {
-                const active = expiryPreset === option.value;
-                return (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[styles.typeChip, active && styles.typeChipActive]}
-                    onPress={() => handleExpiryPreset(option.value)}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={[
-                        styles.typeChipText,
-                        active && styles.typeChipTextActive,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {expiryPreset === "custom" ? (
-              <>
-                <TouchableOpacity
-                  style={[styles.input, styles.dateInput]}
-                  onPress={() => setShowExpiryPicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={expiryDate ? styles.dateText : styles.datePlaceholder}
-                  >
-                    {expiryDate ? formatDateLocal(expiryDate) : "เลือกวันหมดอายุ"}
-                  </Text>
-                </TouchableOpacity>
-                {showExpiryPicker && (
-                  <DateTimePicker
-                    value={expiryDate ?? presetExpiryDate("1m")!}
-                    mode="date"
-                    display={Platform.OS === "ios" ? "inline" : "default"}
-                    minimumDate={new Date()}
-                    onChange={(event, selected) => {
-                      if (Platform.OS !== "ios") setShowExpiryPicker(false);
-                      if (event.type === "set" && selected) {
-                        setExpiryDate(selected);
-                      } else if (event.type === "dismissed") {
-                        setShowExpiryPicker(false);
-                      }
-                    }}
-                  />
-                )}
-                {Platform.OS === "ios" && showExpiryPicker && (
-                  <TouchableOpacity
-                    style={styles.dateDoneBtn}
-                    onPress={() => setShowExpiryPicker(false)}
-                  >
-                    <Text style={styles.dateDoneText}>เสร็จ</Text>
-                  </TouchableOpacity>
-                )}
-              </>
-            ) : (
-              expiryDate && (
-                <Text style={styles.helperText}>
-                  หมดอายุ {formatDateLocal(expiryDate)}
-                </Text>
-              )
-            )}
-          </Field>
-        )}
 
         <Field label="มีรถไหม">
           <View style={styles.segmentRow}>
@@ -749,44 +638,6 @@ export default function WalkInScreen() {
         </View>
       </Modal>
 
-      <Modal
-        visible={!!qrModal}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setQrModal(null)}
-      >
-        <View style={styles.qrModalBackdrop}>
-          <View style={styles.qrModalCard}>
-            <Text style={styles.qrModalTitle}>QR Code ระยะยาว</Text>
-            {qrModal && !qrImageError && (
-              <Image
-                source={{ uri: visitorQrUrl(qrModal.id) }}
-                style={styles.qrImage}
-                resizeMode="contain"
-                onError={() => setQrImageError(true)}
-              />
-            )}
-            {qrImageError && (
-              <View style={styles.qrImage}>
-                <Text style={styles.qrErrorText}>โหลด QR ไม่สำเร็จ</Text>
-              </View>
-            )}
-            <Text style={styles.qrName}>{qrModal?.visitorName}</Text>
-            {!!qrModal?.visitorOrganization && (
-              <Text style={styles.qrMeta}>{qrModal.visitorOrganization}</Text>
-            )}
-            {!!qrModal?.expiryDate && (
-              <Text style={styles.qrMeta}>วันหมดอายุ {qrModal.expiryDate}</Text>
-            )}
-            <Text style={styles.qrNote}>
-              ให้ผู้มาติดต่อแสดง QR นี้ที่จุดรักษาความปลอดภัยในครั้งถัดไป
-            </Text>
-            <TouchableOpacity style={styles.qrDoneBtn} onPress={() => setQrModal(null)}>
-              <Text style={styles.qrDoneText}>เสร็จสิ้น</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -826,13 +677,6 @@ function SegmentButton({
       </Text>
     </TouchableOpacity>
   );
-}
-
-function formatDateLocal(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 function formatEmployeeName(employee: HrEmployee) {
@@ -921,17 +765,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   cardReaderText: { color: "#166534", fontSize: 14, fontWeight: "700" },
-  dateInput: { justifyContent: "center" },
-  dateText: { color: "#111827", fontSize: 15 },
-  datePlaceholder: { color: "#9ca3af", fontSize: 15 },
-  dateDoneBtn: {
-    backgroundColor: "#1f2937",
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  dateDoneText: { color: "#fff", fontSize: 14, fontWeight: "700" },
   clearBtn: {
     backgroundColor: "#1f2937",
     borderRadius: 8,
@@ -943,6 +776,32 @@ const styles = StyleSheet.create({
   clearText: { color: "#fff", fontSize: 13, fontWeight: "700" },
   inlineLoading: { alignSelf: "flex-start", marginTop: 4 },
   hostError: { color: "#b91c1c", fontSize: 12, fontWeight: "600" },
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  checkboxBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#9ca3af",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  checkboxBoxActive: { backgroundColor: "#16a34a", borderColor: "#16a34a" },
+  checkboxMark: { color: "#fff", fontSize: 15, fontWeight: "800" },
+  checkboxTextWrap: { flex: 1 },
+  checkboxText: { color: "#166534", fontSize: 13, fontWeight: "700" },
+  checkboxSubText: { color: "#6b7280", fontSize: 12, marginTop: 2 },
   employeeItem: {
     backgroundColor: "#fff",
     borderWidth: 1,
@@ -1049,47 +908,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cameraCaptureText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  qrModalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
-  qrModalCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 24,
-    width: "100%",
-    maxWidth: 360,
-    alignItems: "center",
-  },
-  qrModalTitle: { fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 16 },
-  qrImage: { width: 220, height: 220, marginBottom: 16 },
-  qrErrorText: {
-    flex: 1,
-    textAlignVertical: "center",
-    textAlign: "center",
-    color: "#dc2626",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  qrName: { fontSize: 16, fontWeight: "700", color: "#111827", textAlign: "center" },
-  qrMeta: { fontSize: 13, color: "#6b7280", marginTop: 4, textAlign: "center" },
-  qrNote: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginTop: 12,
-    textAlign: "center",
-    lineHeight: 18,
-  },
-  qrDoneBtn: {
-    marginTop: 20,
-    backgroundColor: "#16a34a",
-    borderRadius: 8,
-    paddingVertical: 13,
-    alignItems: "center",
-    alignSelf: "stretch",
-  },
-  qrDoneText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });

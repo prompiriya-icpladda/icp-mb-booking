@@ -1,8 +1,8 @@
+import { kioskModule } from "@/src/utils/kioskModule";
 import { useKeepAwake } from "expo-keep-awake";
 import * as NavigationBar from "expo-navigation-bar";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useRef, useState } from "react";
-import { kioskModule } from "@/src/utils/kioskModule";
 import {
   AppState,
   BackHandler,
@@ -19,7 +19,7 @@ import {
 } from "../theme/typography";
 
 const ADMIN_PASSWORD_KEY = "kiosk_admin_password";
-const DEFAULT_ADMIN_PASSWORD = "!CPNKadmin0505";
+const DEFAULT_ADMIN_PASSWORD = "!CPLadda1518";
 
 async function getAdminPassword(): Promise<string> {
   try {
@@ -109,7 +109,11 @@ export default function KioskGuard({
   return (
     <>
       {children}
-      <TouchableOpacity style={styles.exitBtn} onPress={handleExitPress} activeOpacity={0.7}>
+      <TouchableOpacity
+        style={styles.exitBtn}
+        onPress={handleExitPress}
+        activeOpacity={0.7}
+      >
         <Text style={styles.exitText}>✕ ปิดแอป</Text>
       </TouchableOpacity>
       <Modal

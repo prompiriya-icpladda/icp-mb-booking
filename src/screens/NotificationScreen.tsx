@@ -33,7 +33,7 @@ export default function NotificationScreen({
   const [activeTab, setActiveTab] = useState<AppointmentTab>("normal");
   // นัดหมายปกติ = single-use ของวันนี้ (มาเช็คอินตามเวลา)
   const [todayAppointments, setTodayAppointments] = useState<TodayAppointment[]>([]);
-  // นัดหมายระยะยาว = QR ที่ยังไม่หมดอายุ ไม่ผูกกับวันนี้
+  // นัดหมายระยะยาว = รายการที่ยังไม่หมดอายุ ไม่ผูกกับวันนี้
   const [longTermAppointments, setLongTermAppointments] = useState<TodayAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -211,7 +211,7 @@ export default function NotificationScreen({
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{isHistory ? "ประวัติการแจ้งเตือน" : isLongTerm ? "นัดหมายระยะยาว" : "นัดหมายวันนี้"}</Text>
-        <Text style={styles.headerDate}>{isHistory ? "ย้อนหลัง 7 วัน" : isLongTerm ? "QR ที่ยังไม่หมดอายุ" : today}</Text>
+        <Text style={styles.headerDate}>{isHistory ? "ย้อนหลัง 7 วัน" : isLongTerm ? "รายการที่ยังไม่หมดอายุ" : today}</Text>
         <View style={styles.headerRow}>
           {(isHistory || !loading) && (
             <View style={styles.countBadge}>

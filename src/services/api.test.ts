@@ -1,4 +1,4 @@
-import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, checkinResultPresentation, presetExpiryDate, appointmentTimeMinutes, sortAppointmentsByLatest, EXPIRY_PRESET_OPTIONS, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees } from "./api";
+import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, checkinResultPresentation, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees } from "./api";
 
 describe("VISITOR_TYPE_OPTIONS", () => {
   it("does not offer rider for new walk-in registrations", () => {
@@ -207,45 +207,6 @@ describe("checkinResultPresentation", () => {
   });
 });
 
-describe("presetExpiryDate", () => {
-  const now = new Date("2026-06-30T00:00:00");
-  const ymd = (d: Date | null) =>
-    d ? [d.getFullYear(), d.getMonth(), d.getDate()] : null;
-
-  it("adds 7 days for 1w", () => {
-    expect(ymd(presetExpiryDate("1w", now))).toEqual([2026, 6, 7]); // 2026-07-07
-  });
-  it("adds 1/3/6 months for month presets", () => {
-    expect(ymd(presetExpiryDate("1m", now))).toEqual([2026, 6, 30]);  // 2026-07-30
-    expect(ymd(presetExpiryDate("3m", now))).toEqual([2026, 8, 30]);  // 2026-09-30
-    expect(ymd(presetExpiryDate("6m", now))).toEqual([2026, 11, 30]); // 2026-12-30
-  });
-  it("adds 1 year for 1y", () => {
-    expect(ymd(presetExpiryDate("1y", now))).toEqual([2027, 5, 30]); // 2027-06-30
-  });
-  it("returns null for custom", () => {
-    expect(presetExpiryDate("custom", now)).toBeNull();
-  });
-  it("does not mutate the passed-in now", () => {
-    const ref = new Date("2026-06-30T00:00:00");
-    presetExpiryDate("1y", ref);
-    expect(ymd(ref)).toEqual([2026, 5, 30]); // เดิมไม่เปลี่ยน
-  });
-});
-
-describe("EXPIRY_PRESET_OPTIONS", () => {
-  it("exposes the preset values and Thai labels exactly", () => {
-    expect(EXPIRY_PRESET_OPTIONS).toEqual([
-      { value: "1w", label: "1 อาทิตย์" },
-      { value: "1m", label: "1 เดือน" },
-      { value: "3m", label: "3 เดือน" },
-      { value: "6m", label: "6 เดือน" },
-      { value: "1y", label: "1 ปี" },
-      { value: "custom", label: "กำหนดเอง" },
-    ]);
-  });
-});
-
 describe("registerMobilePushToken", () => {
   afterEach(() => {
     jest.restoreAllMocks();
@@ -279,6 +240,55 @@ describe("registerMobilePushToken", () => {
 describe("createWalkInVisit", () => {
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it("forces mobile walk-in registrations to single-use QR", async () => {
+    const fetchMock = jest.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      text: async () => JSON.stringify({ _id: "visit-1" }),
+    }));
+    jest.spyOn(console, "log").mockImplementation(() => undefined);
+    (global as any).fetch = fetchMock;
+
+    await createWalkInVisit({
+      visitorName: "สมชาย ใจดี",
+      hostEmployeeCode: "EMP001",
+      hostName: "Host User",
+      companyName: "บริษัท ก",
+      hasVehicle: false,
+      source: "mobile-walk-in",
+      qrMode: "long-term",
+      expiryDate: "2026-09-30",
+    } as any);
+
+    const requestInit = fetchMock.mock.calls[0]![1];
+    const requestBody = JSON.parse(String(requestInit.body));
+    expect(requestBody.qrMode).toBe("single-use");
+    expect(requestBody.expiryDate).toBe("");
+    expect(requestBody.includeDepartmentRelatedEmployees).toBe(true);
+  });
+
+  it("can disable department related employee notifications", async () => {
+    const fetchMock = jest.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      text: async () => JSON.stringify({ _id: "visit-1" }),
+    }));
+    jest.spyOn(console, "log").mockImplementation(() => undefined);
+    (global as any).fetch = fetchMock;
+
+    await createWalkInVisit({
+      visitorName: "สมชาย ใจดี",
+      hostEmployeeCode: "EMP001",
+      hostName: "Host User",
+      companyName: "บริษัท ก",
+      hasVehicle: false,
+      source: "mobile-walk-in",
+      includeDepartmentRelatedEmployees: false,
+    });
+
+    const requestInit = fetchMock.mock.calls[0]![1];
+    const requestBody = JSON.parse(String(requestInit.body));
+    expect(requestBody.includeDepartmentRelatedEmployees).toBe(false);
   });
 
   it("does not send or log national ID numbers", async () => {
