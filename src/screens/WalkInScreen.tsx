@@ -6,6 +6,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   ScrollView,
   StyleSheet,
@@ -27,8 +28,16 @@ import {
   VisitorType,
 } from "../services/api";
 import { readThaiIdCardName } from "../services/thaiIdCard";
+import {
+  buildPdpaSignaturePayload,
+  hasPdpaSignature,
+  PDPA_CONSENT_TEXT,
+  PDPA_CONSENT_VERSION,
+} from "../utils/pdpaConsent";
+import type { PdpaSignaturePoint, PdpaSignatureStroke } from "../utils/pdpaConsent";
 
 const MIN_VEHICLE_COUNT = 1;
+const SIGNATURE_POINT_MIN_DISTANCE = 2;
 
 export default function WalkInScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -42,6 +51,11 @@ export default function WalkInScreen() {
   const [selectedHost, setSelectedHost] = useState<HrEmployee | null>(null);
   const [includeDepartmentRelatedEmployees, setIncludeDepartmentRelatedEmployees] =
     useState(true);
+  const [pdpaModalOpen, setPdpaModalOpen] = useState(false);
+  const [pdpaConsentAccepted, setPdpaConsentAccepted] = useState(false);
+  const [pdpaConsentedAt, setPdpaConsentedAt] = useState("");
+  const [pdpaSignatureStrokes, setPdpaSignatureStrokes] = useState<PdpaSignatureStroke[]>([]);
+  const [signatureBoxSize, setSignatureBoxSize] = useState({ width: 0, height: 0 });
   const [hostLoading, setHostLoading] = useState(false);
   const [hostError, setHostError] = useState<string | null>(null);
   const [hasVehicle, setHasVehicle] = useState(false);
@@ -58,10 +72,29 @@ export default function WalkInScreen() {
     text: string;
   } | null>(null);
   const cameraRef = useRef<CameraView>(null);
+  const signatureBoxSizeRef = useRef(signatureBoxSize);
 
   // แม่ค้ามาขายของ ไม่ต้องเลือกผู้ที่ต้องการพบ
   const hostRequired = visitorTypeNeedsHost(visitorType);
   const companyVisible = visitorTypeNeedsCompany(visitorType);
+  const pdpaSignature = buildPdpaSignaturePayload(pdpaSignatureStrokes, signatureBoxSize);
+  const pdpaSignatureReady = hasPdpaSignature(pdpaSignature);
+  const pdpaReady = pdpaConsentAccepted && pdpaSignatureReady && !!pdpaConsentedAt;
+
+  const signatureResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (event) => {
+        const point = signaturePointFromEvent(event);
+        setPdpaConsentedAt("");
+        setPdpaSignatureStrokes((current) => [...current, [point]]);
+      },
+      onPanResponderMove: (event) => {
+        appendSignaturePoint(signaturePointFromEvent(event));
+      },
+    }),
+  ).current;
 
   useEffect(() => {
     const query = hostQuery.trim();
@@ -110,6 +143,10 @@ export default function WalkInScreen() {
     setSelectedHost(null);
     setHostResults([]);
     setIncludeDepartmentRelatedEmployees(true);
+    setPdpaModalOpen(false);
+    setPdpaConsentAccepted(false);
+    setPdpaConsentedAt("");
+    setPdpaSignatureStrokes([]);
     setHasVehicle(false);
     setVehicleCount(1);
     setLicensePlates([""]);
@@ -124,8 +161,110 @@ export default function WalkInScreen() {
     if (!visitorTypeNeedsCompany(next)) setCompanyName("");
   }
 
+  function pdpaMissingMessage() {
+    if (!pdpaConsentAccepted) return "กรุณายินยอม PDPA ก่อนอ่านบัตรประชาชน";
+    if (!pdpaSignatureReady) return "กรุณาลงลายเซ็น PDPA ก่อนอ่านบัตรประชาชน";
+    return "กรุณากดยืนยัน PDPA ก่อนอ่านบัตรประชาชน";
+  }
+
+  function signaturePointFromEvent(event: { nativeEvent: { locationX: number; locationY: number } }) {
+    const size = signatureBoxSizeRef.current;
+    const width = Math.max(0, size.width || 0);
+    const height = Math.max(0, size.height || 0);
+    return {
+      x: Math.max(0, Math.min(width, event.nativeEvent.locationX || 0)),
+      y: Math.max(0, Math.min(height, event.nativeEvent.locationY || 0)),
+    };
+  }
+
+  function appendSignaturePoint(point: PdpaSignaturePoint) {
+    setPdpaConsentedAt("");
+    setPdpaSignatureStrokes((current) => {
+      const lastStroke = current[current.length - 1];
+      if (!lastStroke) return [[point]];
+      const lastPoint = lastStroke[lastStroke.length - 1];
+      if (
+        lastPoint &&
+        Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y) <
+          SIGNATURE_POINT_MIN_DISTANCE
+      ) {
+        return current;
+      }
+      return [...current.slice(0, -1), [...lastStroke, point]];
+    });
+  }
+
+  function updateSignatureLayout(width: number, height: number) {
+    const nextSize = { width, height };
+    signatureBoxSizeRef.current = nextSize;
+    setSignatureBoxSize(nextSize);
+  }
+
+  function clearPdpaSignature() {
+    setPdpaConsentedAt("");
+    setPdpaSignatureStrokes([]);
+  }
+
+  function togglePdpaConsent() {
+    setPdpaConsentAccepted((current) => {
+      if (current) setPdpaConsentedAt("");
+      return !current;
+    });
+  }
+
+  function confirmPdpaConsent() {
+    if (!pdpaConsentAccepted) {
+      Alert.alert("ยังไม่ได้ยินยอม PDPA", "กรุณาติ๊กยินยอมก่อนอ่านบัตรประชาชน");
+      return;
+    }
+    if (!pdpaSignatureReady) {
+      Alert.alert("ยังไม่มีลายเซ็น", "กรุณาลงลายเซ็นก่อนอ่านบัตรประชาชน");
+      return;
+    }
+    setPdpaConsentedAt(new Date().toISOString());
+    setPdpaModalOpen(false);
+  }
+
+  function renderSignatureInk() {
+    return pdpaSignatureStrokes.flatMap((stroke, strokeIndex) =>
+      stroke.map((point, pointIndex) => {
+        if (pointIndex === 0) {
+          return (
+            <View
+              key={`${strokeIndex}-${pointIndex}`}
+              style={[styles.signatureDot, { left: point.x - 2, top: point.y - 2 }]}
+            />
+          );
+        }
+        const previousPoint = stroke[pointIndex - 1];
+        const length = Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y);
+        const angle = Math.atan2(point.y - previousPoint.y, point.x - previousPoint.x);
+        return (
+          <View
+            key={`${strokeIndex}-${pointIndex}`}
+            style={[
+              styles.signatureLine,
+              {
+                left: (point.x + previousPoint.x - length) / 2,
+                top: (point.y + previousPoint.y) / 2 - 1,
+                width: length,
+                transform: [{ rotateZ: `${angle}rad` }],
+              },
+            ]}
+          />
+        );
+      }),
+    );
+  }
+
   async function handleReadThaiIdCard() {
     if (cardReading || submitting) return;
+    if (!pdpaReady) {
+      const text = pdpaMissingMessage();
+      setMessage({ type: "error", text });
+      setPdpaModalOpen(true);
+      return;
+    }
     setCardReading(true);
     setMessage(null);
 
@@ -183,6 +322,7 @@ export default function WalkInScreen() {
 
   function validate(host: HrEmployee | null) {
     if (!visitorName.trim()) return "กรุณากรอกชื่อผู้มาติดต่อ";
+    if (!pdpaReady) return pdpaMissingMessage();
     if (hostRequired && !host) return "กรุณาเลือกผู้ที่ต้องการพบจาก HR";
     if (companyVisible && !companyName.trim()) return "กรุณากรอกชื่อบริษัท";
     if (hasVehicle) {
@@ -248,6 +388,10 @@ export default function WalkInScreen() {
         includeDepartmentRelatedEmployees: hostRequired
           ? includeDepartmentRelatedEmployees
           : false,
+        pdpaConsentAccepted: true,
+        pdpaConsentedAt,
+        pdpaConsentVersion: PDPA_CONSENT_VERSION,
+        pdpaSignature,
         source: "mobile-walk-in",
       });
       resetForm();
@@ -328,8 +472,23 @@ export default function WalkInScreen() {
             placeholderTextColor="#9ca3af"
           />
           <TouchableOpacity
+            style={[styles.pdpaStatusCard, pdpaReady && styles.pdpaStatusCardReady]}
+            onPress={() => setPdpaModalOpen(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.pdpaStatusTitle}>
+              {pdpaReady ? "ยินยอม PDPA และลงลายเซ็นแล้ว" : "ต้องยินยอม PDPA ก่อนอ่านบัตร"}
+            </Text>
+            <Text style={styles.pdpaStatusText}>
+              {pdpaReady
+                ? "ระบบพร้อมอ่านชื่อ-นามสกุลจากบัตรประชาชน"
+                : "กดเพื่ออ่านรายละเอียด ติ๊กยินยอม และลงลายเซ็น"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[
               styles.cardReaderBtn,
+              !pdpaReady && styles.cardReaderBlocked,
               (cardReading || submitting) && styles.submitDisabled,
             ]}
             onPress={handleReadThaiIdCard}
@@ -339,7 +498,9 @@ export default function WalkInScreen() {
             {cardReading ? (
               <ActivityIndicator color="#166534" />
             ) : (
-              <Text style={styles.cardReaderText}>อ่านบัตรประชาชน (ชื่อ-นามสกุล)</Text>
+              <Text style={[styles.cardReaderText, !pdpaReady && styles.cardReaderBlockedText]}>
+                อ่านบัตรประชาชน (ชื่อ-นามสกุล)
+              </Text>
             )}
           </TouchableOpacity>
           <Text style={styles.helperText}>
@@ -638,6 +799,87 @@ export default function WalkInScreen() {
         </View>
       </Modal>
 
+      <Modal
+        visible={pdpaModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setPdpaModalOpen(false)}
+      >
+        <View style={styles.pdpaModalBackdrop}>
+          <View style={styles.pdpaModalCard}>
+            <Text style={styles.pdpaModalTitle}>ยินยอม PDPA ก่อนอ่านบัตรประชาชน</Text>
+            <Text style={styles.pdpaModalSubTitle}>
+              กรุณาอ่านรายละเอียด ติ๊กยินยอม และลงลายเซ็นก่อนใช้เครื่องอ่านบัตร
+            </Text>
+
+            <ScrollView style={styles.pdpaTextBox} nestedScrollEnabled>
+              <Text style={styles.pdpaConsentText}>{PDPA_CONSENT_TEXT}</Text>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.pdpaConsentRow}
+              onPress={togglePdpaConsent}
+              activeOpacity={0.8}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: pdpaConsentAccepted }}
+            >
+              <View
+                style={[
+                  styles.checkboxBox,
+                  pdpaConsentAccepted && styles.checkboxBoxActive,
+                ]}
+              >
+                {pdpaConsentAccepted && <Text style={styles.checkboxMark}>✓</Text>}
+              </View>
+              <Text style={styles.pdpaConsentLabel}>
+                ข้าพเจ้ายินยอมให้บริษัทเก็บรวบรวม ใช้ และจัดเก็บข้อมูลส่วนบุคคลตามรายละเอียดนี้
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={styles.signatureLabel}>ลายเซ็นผู้มาติดต่อ</Text>
+            <View
+              style={styles.signatureBox}
+              onLayout={(event) =>
+                updateSignatureLayout(
+                  event.nativeEvent.layout.width,
+                  event.nativeEvent.layout.height,
+                )
+              }
+              {...signatureResponder.panHandlers}
+            >
+              {renderSignatureInk()}
+              {!pdpaSignatureReady && (
+                <Text style={styles.signaturePlaceholder}>เซ็นชื่อในช่องนี้</Text>
+              )}
+            </View>
+
+            <View style={styles.pdpaInlineActions}>
+              <TouchableOpacity style={styles.signatureClearBtn} onPress={clearPdpaSignature}>
+                <Text style={styles.signatureClearText}>ล้างลายเซ็น</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.pdpaModalActions}>
+              <TouchableOpacity
+                style={styles.pdpaCancelBtn}
+                onPress={() => setPdpaModalOpen(false)}
+              >
+                <Text style={styles.pdpaCancelText}>ยกเลิก</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.pdpaConfirmBtn,
+                  (!pdpaConsentAccepted || !pdpaSignatureReady) && styles.submitDisabled,
+                ]}
+                onPress={confirmPdpaConsent}
+              >
+                <Text style={styles.pdpaConfirmText}>ยืนยัน</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </KeyboardAvoidingView>
   );
 }
@@ -755,6 +997,18 @@ const styles = StyleSheet.create({
   typeChipText: { color: "#6b7280", fontSize: 13, fontWeight: "700" },
   typeChipTextActive: { color: "#166534" },
   helperText: { color: "#6b7280", fontSize: 12, marginTop: 2 },
+  pdpaStatusCard: {
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fdba74",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  pdpaStatusCardReady: { backgroundColor: "#f0fdf4", borderColor: "#86efac" },
+  pdpaStatusTitle: { color: "#9a3412", fontSize: 13, fontWeight: "800" },
+  pdpaStatusText: { color: "#6b7280", fontSize: 12, marginTop: 3 },
   cardReaderBtn: {
     backgroundColor: "#dcfce7",
     borderWidth: 1,
@@ -764,7 +1018,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 8,
   },
+  cardReaderBlocked: { backgroundColor: "#f3f4f6", borderColor: "#d1d5db" },
   cardReaderText: { color: "#166534", fontSize: 14, fontWeight: "700" },
+  cardReaderBlockedText: { color: "#6b7280" },
   clearBtn: {
     backgroundColor: "#1f2937",
     borderRadius: 8,
@@ -908,4 +1164,93 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cameraCaptureText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  pdpaModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(17,24,39,0.55)",
+    padding: 14,
+    justifyContent: "center",
+  },
+  pdpaModalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 14,
+    maxHeight: "94%",
+    gap: 10,
+  },
+  pdpaModalTitle: { color: "#111827", fontSize: 17, fontWeight: "800" },
+  pdpaModalSubTitle: { color: "#6b7280", fontSize: 12, lineHeight: 18 },
+  pdpaTextBox: {
+    maxHeight: 220,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 10,
+    backgroundColor: "#f9fafb",
+    padding: 10,
+  },
+  pdpaConsentText: { color: "#374151", fontSize: 12, lineHeight: 19 },
+  pdpaConsentRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    borderRadius: 8,
+    padding: 10,
+  },
+  pdpaConsentLabel: { flex: 1, color: "#166534", fontSize: 13, lineHeight: 19, fontWeight: "700" },
+  signatureLabel: { color: "#374151", fontSize: 13, fontWeight: "800" },
+  signatureBox: {
+    height: 160,
+    borderWidth: 1,
+    borderColor: "#9ca3af",
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    overflow: "hidden",
+  },
+  signaturePlaceholder: {
+    position: "absolute",
+    alignSelf: "center",
+    top: 66,
+    color: "#9ca3af",
+    fontSize: 13,
+  },
+  signatureDot: {
+    position: "absolute",
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#111827",
+  },
+  signatureLine: {
+    position: "absolute",
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: "#111827",
+  },
+  pdpaInlineActions: { flexDirection: "row", justifyContent: "flex-end" },
+  signatureClearBtn: {
+    backgroundColor: "#f3f4f6",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  signatureClearText: { color: "#374151", fontSize: 12, fontWeight: "700" },
+  pdpaModalActions: { flexDirection: "row", gap: 10 },
+  pdpaCancelBtn: {
+    flex: 1,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  pdpaCancelText: { color: "#374151", fontSize: 14, fontWeight: "700" },
+  pdpaConfirmBtn: {
+    flex: 1,
+    backgroundColor: "#16a34a",
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  pdpaConfirmText: { color: "#fff", fontSize: 14, fontWeight: "800" },
 });

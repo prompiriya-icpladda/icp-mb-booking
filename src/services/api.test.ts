@@ -268,6 +268,46 @@ describe("createWalkInVisit", () => {
     expect(requestBody.includeDepartmentRelatedEmployees).toBe(true);
   });
 
+  it("sends PDPA consent evidence with walk-in registrations", async () => {
+    const fetchMock = jest.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      text: async () => JSON.stringify({ _id: "visit-1" }),
+    }));
+    jest.spyOn(console, "log").mockImplementation(() => undefined);
+    (global as any).fetch = fetchMock;
+
+    const signature = {
+      version: 1 as const,
+      width: 320,
+      height: 160,
+      strokes: [[{ x: 10, y: 20 }]],
+    };
+
+    await createWalkInVisit({
+      visitorName: "สมชาย ใจดี",
+      hostEmployeeCode: "EMP001",
+      hostName: "Host User",
+      companyName: "บริษัท ก",
+      hasVehicle: false,
+      source: "mobile-walk-in",
+      pdpaConsentAccepted: true,
+      pdpaConsentedAt: "2026-08-28T02:00:00.000Z",
+      pdpaConsentVersion: "visitor-walk-in-2026-08-28",
+      pdpaSignature: signature,
+    });
+
+    const requestInit = fetchMock.mock.calls[0]![1];
+    const requestBody = JSON.parse(String(requestInit.body));
+    expect(requestBody).toEqual(
+      expect.objectContaining({
+        pdpaConsentAccepted: true,
+        pdpaConsentedAt: "2026-08-28T02:00:00.000Z",
+        pdpaConsentVersion: "visitor-walk-in-2026-08-28",
+        pdpaSignature: signature,
+      }),
+    );
+  });
+
   it("can disable department related employee notifications", async () => {
     const fetchMock = jest.fn(async (_url: string, _init: RequestInit) => ({
       ok: true,

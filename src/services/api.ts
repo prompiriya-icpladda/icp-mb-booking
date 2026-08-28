@@ -1,3 +1,5 @@
+import type { PdpaSignaturePayload } from "../utils/pdpaConsent";
+
 // ปรับ API_URL ให้ตรงกับ IP และ port ของ server จริง (ไม่ใช่ localhost เมื่อรันบนมือถือ)
 export const API_URL = "https://app-plant.icpladda.com/ICPBooking/api";
 export const HR_API_URL =
@@ -455,6 +457,10 @@ export interface CreateWalkInVisitPayload {
   licensePlate?: string;
   licensePlates?: string[];
   includeDepartmentRelatedEmployees?: boolean;
+  pdpaConsentAccepted?: boolean;
+  pdpaConsentedAt?: string;
+  pdpaConsentVersion?: string;
+  pdpaSignature?: PdpaSignaturePayload;
   source: "mobile-walk-in";
 }
 

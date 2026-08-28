@@ -19,7 +19,7 @@ import {
 } from "../theme/typography";
 
 const ADMIN_PASSWORD_KEY = "kiosk_admin_password";
-const DEFAULT_ADMIN_PASSWORD = "!CPLadda1518";
+const DEFAULT_ADMIN_PASSWORD = "!CPladda1518";
 
 async function getAdminPassword(): Promise<string> {
   try {
