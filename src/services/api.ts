@@ -175,13 +175,13 @@ export function isLongTermCheckoutable(
   return (a.visitorType === "rider" || a.visitorType === "merchant") && status === "arrived";
 }
 
-// แท็บ "ระยะยาว" โชว์เฉพาะคนที่อยู่ในพื้นที่ตอนนี้ = "มาแล้ว" (เช็คอินแล้ว ยังไม่เช็คเอาท์)
-// ซ่อน "ลงทะเบียน" (ยังไม่มา) และ "เช็คเอาท์" (ไปแล้ว)
+// แท็บ "ระยะยาว" โชว์คนที่ลงทะเบียนแล้วยังใช้ QR ได้ รวมถึงยังไม่เช็คอิน
+// ซ่อนเฉพาะ "เช็คเอาท์" (ไปแล้ว)
 export function isLongTermOnSite(
   a: Pick<TodayAppointment, "checkedInAt" | "completionRequestedAt" | "completedAt">,
 ): boolean {
   const status = longTermStatus(a);
-  return status === "arrived" || status === "completion-requested";
+  return status !== "checked-out";
 }
 
 export type LongTermCardAction = "detail" | "scan" | "select";

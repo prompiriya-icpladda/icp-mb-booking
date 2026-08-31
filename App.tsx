@@ -8,6 +8,7 @@ import {
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from "react-native";
+import { KioskAdminPasswordModal } from "./src/components/KioskAdminPasswordModal";
 import KioskGuard from "./src/components/KioskGuard";
 import NotificationScreen from "./src/screens/NotificationScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
@@ -30,6 +31,7 @@ import {
   openMobileReleaseUpdate,
   type MobileReleaseCheckResult,
 } from "./src/utils/mobileReleaseUpdate";
+import { verifyKioskAdminPassword } from "./src/utils/kioskAdminPassword";
 import {
   BOTTOM_NAV_TABS,
   shouldShowNavScannerButton,
@@ -203,6 +205,9 @@ export default function App() {
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateOpening, setUpdateOpening] = useState(false);
   const [updateError, setUpdateError] = useState("");
+  const [updatePasswordVisible, setUpdatePasswordVisible] = useState(false);
+  const [updatePassword, setUpdatePassword] = useState("");
+  const [updatePasswordError, setUpdatePasswordError] = useState("");
 
   async function refreshRequiredUpdate() {
     setUpdateChecking(true);
@@ -219,7 +224,26 @@ export default function App() {
 
   async function handleOpenRequiredUpdate() {
     if (!requiredUpdate?.release) return;
+    setUpdatePasswordVisible(true);
+    setUpdatePassword("");
+    setUpdatePasswordError("");
+  }
+
+  function cancelRequiredUpdatePassword() {
+    setUpdatePasswordVisible(false);
+    setUpdatePassword("");
+    setUpdatePasswordError("");
+  }
+
+  async function confirmOpenRequiredUpdate() {
+    if (!requiredUpdate?.release) return;
+    if (!(await verifyKioskAdminPassword(updatePassword))) {
+      setUpdatePasswordError("รหัสผ่านไม่ถูกต้อง");
+      setUpdatePassword("");
+      return;
+    }
     setUpdateOpening(true);
+    setUpdatePasswordVisible(false);
     setUpdateError("");
     try {
       await openMobileReleaseUpdate(requiredUpdate.release);
@@ -272,6 +296,20 @@ export default function App() {
       ) : (
         <MainApp />
       )}
+      <KioskAdminPasswordModal
+        visible={updatePasswordVisible}
+        title="อัปเดต AP Scanner"
+        subtitle="กรุณากรอกรหัสผ่านผู้ดูแลระบบก่อนออกไปติดตั้งอัปเดต"
+        password={updatePassword}
+        error={updatePasswordError}
+        confirmLabel="อัปเดต"
+        onChangePassword={(value) => {
+          setUpdatePassword(value);
+          setUpdatePasswordError("");
+        }}
+        onCancel={cancelRequiredUpdatePassword}
+        onConfirm={confirmOpenRequiredUpdate}
+      />
     </KioskGuard>
   );
 }

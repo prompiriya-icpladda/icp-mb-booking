@@ -233,8 +233,8 @@ describe("isLongTermOnSite", () => {
       }),
     ).toBe(true);
   });
-  it("hides a registered visitor (not yet arrived)", () => {
-    expect(isLongTermOnSite({ checkedInAt: null, completedAt: null })).toBe(false);
+  it("shows a registered visitor waiting to check in", () => {
+    expect(isLongTermOnSite({ checkedInAt: null, completedAt: null })).toBe(true);
   });
   it("hides a checked-out visitor (already left)", () => {
     expect(
