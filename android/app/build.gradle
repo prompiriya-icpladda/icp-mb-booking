@@ -1,0 +1,374 @@
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+
+/**
+ * This is the configuration block to customize your React Native Android app.
+ * By default you don't need to apply any configuration, just uncomment the lines you need.
+ */
+react {
+    entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
+    reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
+    hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
+    codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
+
+    enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
+    // Use Expo CLI to bundle the app, this ensures the Metro config
+    // works correctly with Expo projects.
+    cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
+    bundleCommand = "export:embed"
+
+    /* Folders */
+     //   The root of your project, i.e. where "package.json" lives. Default is '../..'
+    // root = file("../../")
+    //   The folder where the react-native NPM package is. Default is ../../node_modules/react-native
+    // reactNativeDir = file("../../node_modules/react-native")
+    //   The folder where the react-native Codegen package is. Default is ../../node_modules/@react-native/codegen
+    // codegenDir = file("../../node_modules/@react-native/codegen")
+
+    /* Variants */
+    //   The list of variants to that are debuggable. For those we're going to
+    //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
+    //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
+    // debuggableVariants = ["liteDebug", "prodDebug"]
+
+    /* Bundling */
+    //   A list containing the node command and its flags. Default is just 'node'.
+    // nodeExecutableAndArgs = ["node"]
+
+    //
+    //   The path to the CLI configuration file. Default is empty.
+    // bundleConfig = file(../rn-cli.config.js)
+    //
+    //   The name of the generated asset file containing your JS bundle
+    // bundleAssetName = "MyApplication.android.bundle"
+    //
+    //   The entry file for bundle generation. Default is 'index.android.js' or 'index.js'
+    // entryFile = file("../js/MyApplication.android.js")
+    //
+    //   A list of extra flags to pass to the 'bundle' commands.
+    //   See https://github.com/react-native-community/cli/blob/main/docs/commands.md#bundle
+    // extraPackagerArgs = []
+
+    /* Hermes Commands */
+    //   The hermes compiler command to run. By default it is 'hermesc'
+    // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
+    //
+    //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
+    // hermesFlags = ["-O", "-output-source-map"]
+
+    /* Autolinking */
+    autolinkLibrariesWithApp()
+}
+
+/**
+ * Set this to true in release builds to optimize the app using [R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization).
+ */
+def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: false).toBoolean()
+
+/**
+ * The preferred build flavor of JavaScriptCore (JSC)
+ *
+ * For example, to use the international variant, you can use:
+ * `def jscFlavor = 'org.webkit:android-jsc-intl:+'`
+ *
+ * The international variant includes ICU i18n library and necessary data
+ * allowing to use e.g. `Date.toLocaleString` and `String.localeCompare` that
+ * give correct results when using with locales other than en-US. Note that
+ * this variant is about 6MiB larger per architecture than default.
+ */
+def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+
+def mobileReleaseRoot = new File("Y:/server/uploads/mobile-releases")
+def mobileReleaseMajor = 1
+def mobileReleaseMinor = 0
+def appManifestFile = new File(projectRoot, "app.json")
+
+def parsePositiveInt = { value, fallback ->
+    def parsed = 0
+    try {
+        parsed = Integer.parseInt("${value ?: ''}")
+    } catch (Exception ignored) {
+        parsed = 0
+    }
+    return parsed > 0 ? parsed : fallback
+}
+
+def parseVersionParts = { value, required ->
+    def text = "${value ?: ''}".trim()
+    if (!(text ==~ /\d+\.\d+\.\d+/)) {
+        if (required) {
+            throw new GradleException("AP Scanner version must use MAJOR.MINOR.PATCH in app.json: ${text}")
+        }
+        return null
+    }
+
+    def parts = text.tokenize(".").collect { Integer.parseInt(it) }
+    return [major: parts[0], minor: parts[1], patch: parts[2]]
+}
+
+def readKnownMobileReleaseVersions = { releaseRoot, major, minor ->
+    def known = [versionCode: 0, patch: -1]
+    def readMetadata = { metadataFile ->
+        if (!metadataFile.isFile()) return
+        try {
+            def metadata = new groovy.json.JsonSlurper().parse(metadataFile)
+            known.versionCode = Math.max(known.versionCode, parsePositiveInt(metadata.versionCode, 0))
+
+            def versionParts = parseVersionParts(metadata.versionName, false)
+            if (versionParts && versionParts.major == major && versionParts.minor == minor) {
+                known.patch = Math.max(known.patch, versionParts.patch)
+            }
+        } catch (Exception err) {
+            logger.warn("Cannot read mobile release metadata: ${metadataFile} (${err.message})")
+        }
+    }
+
+    readMetadata(new File(releaseRoot, "latest.json"))
+    def candidateDir = new File(releaseRoot, "candidates")
+    if (candidateDir.isDirectory()) {
+        candidateDir.listFiles({ dir, name -> name.endsWith(".json") } as FilenameFilter)?.each { readMetadata(it) }
+    }
+
+    return known
+}
+
+def appManifest = new groovy.json.JsonSlurper().parse(appManifestFile)
+def isAssembleReleaseRequested = gradle.startParameter.taskNames.any { taskName ->
+    "${taskName}".tokenize(":").last() == "assembleRelease"
+}
+
+if (isAssembleReleaseRequested) {
+    if (!(appManifest.expo instanceof Map)) {
+        throw new GradleException("AP Scanner app.json missing expo config")
+    }
+    if (!(appManifest.expo.android instanceof Map)) {
+        appManifest.expo.android = [:]
+    }
+
+    def currentVersionParts = parseVersionParts(appManifest.expo.version ?: "1.0.0", false)
+    def currentPatch = currentVersionParts && currentVersionParts.major == mobileReleaseMajor && currentVersionParts.minor == mobileReleaseMinor
+        ? currentVersionParts.patch
+        : 0
+    def currentVersionCode = parsePositiveInt(appManifest.expo.android.versionCode, 1)
+    def knownVersions = readKnownMobileReleaseVersions(mobileReleaseRoot, mobileReleaseMajor, mobileReleaseMinor)
+    def nextPatch = Math.max(currentPatch, knownVersions.patch) + 1
+    def nextVersionCode = Math.max(currentVersionCode, knownVersions.versionCode) + 1
+
+    appManifest.expo.version = "${mobileReleaseMajor}.${mobileReleaseMinor}.${nextPatch}"
+    appManifest.expo.android.versionCode = nextVersionCode
+    appManifestFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(appManifest)) + System.lineSeparator()
+    logger.lifecycle("AP Scanner version bumped to v${appManifest.expo.version} (${nextVersionCode})")
+}
+
+def expoManifest = appManifest.expo ?: [:]
+def androidManifestConfig = expoManifest.android ?: [:]
+def configuredVersionName = "${expoManifest.version ?: '1.0.0'}"
+def configuredVersionCode = Integer.parseInt("${androidManifestConfig.versionCode ?: 1}")
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
+
+    namespace 'com.icpladda.apscanner'
+    defaultConfig {
+        applicationId 'com.icpladda.apscanner'
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode configuredVersionCode
+        versionName configuredVersionName
+        manifestPlaceholders = [
+            expoUpdatesUrl: System.getenv("EXPO_PUBLIC_UPDATES_URL") ?: "",
+            expoRuntimeVersion: configuredVersionName
+        ]
+
+        buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+    }
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            // Caution! In production, you need to generate your own keystore file.
+            // see https://reactnative.dev/docs/signed-apk-android.
+            signingConfig signingConfigs.debug
+            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
+            shrinkResources enableShrinkResources.toBoolean()
+            minifyEnabled enableMinifyInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
+            crunchPngs enablePngCrunchInRelease.toBoolean()
+        }
+    }
+    packagingOptions {
+        jniLibs {
+            def enableLegacyPackaging = findProperty('expo.useLegacyPackaging') ?: 'false'
+            useLegacyPackaging enableLegacyPackaging.toBoolean()
+        }
+        resources {
+            pickFirsts += [
+                'META-INF/DEPENDENCIES',
+                'META-INF/INDEX.LIST',
+                'META-INF/LICENSE',
+                'META-INF/LICENSE.txt',
+                'META-INF/NOTICE',
+                'META-INF/NOTICE.txt',
+                '**/libjsc.so',
+                '**/libhermes.so'
+            ]
+            excludes += [
+                'META-INF/versions/9/OSGI-INF/MANIFEST.MF',
+                'META-INF/*.kotlin_module',
+                'META-INF/proguard/*'
+            ]
+        }
+    }
+    androidResources {
+        ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+}
+
+// Apply static values from `gradle.properties` to the `android.packagingOptions`
+// Accepts values in comma delimited lists, example:
+// android.packagingOptions.pickFirsts=/LICENSE,**/picasa.ini
+["pickFirsts", "excludes", "merges", "doNotStrip"].each { prop ->
+    // Split option: 'foo,bar' -> ['foo', 'bar']
+    def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",");
+    // Trim all elements in place.
+    for (i in 0..<options.size()) options[i] = options[i].trim();
+    // `[] - ""` is essentially `[""].filter(Boolean)` removing all empty strings.
+    options -= ""
+
+    if (options.length > 0) {
+        println "android.packagingOptions.$prop += $options ($options.length)"
+        // Ex: android.packagingOptions.pickFirsts += '**/SCCS/**'
+        options.each {
+            android.packagingOptions[prop] += it
+        }
+    }
+}
+
+dependencies {
+    // The version of react-native is set by the React Native Gradle Plugin
+    implementation("com.facebook.react:react-android")
+
+    def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
+    def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";
+    def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true";
+
+    if (isGifEnabled) {
+        // For animated gif support
+        implementation("com.facebook.fresco:animated-gif:${expoLibs.versions.fresco.get()}")
+    }
+
+    if (isWebpEnabled) {
+        // For webp support
+        implementation("com.facebook.fresco:webpsupport:${expoLibs.versions.fresco.get()}")
+        if (isWebpAnimatedEnabled) {
+            // Animated webp support
+            implementation("com.facebook.fresco:animated-webp:${expoLibs.versions.fresco.get()}")
+        }
+    }
+
+    if (hermesEnabled.toBoolean()) {
+        implementation("com.facebook.react:hermes-android")
+    } else {
+        implementation jscFlavor
+    }
+}
+
+def resolveMobileReleaseRoot = {
+    return mobileReleaseRoot
+}
+
+def sha256File = { File inputFile ->
+    def digest = java.security.MessageDigest.getInstance("SHA-256")
+    inputFile.withInputStream { input ->
+        byte[] buffer = new byte[8192]
+        int bytesRead = input.read(buffer)
+        while (bytesRead != -1) {
+            digest.update(buffer, 0, bytesRead)
+            bytesRead = input.read(buffer)
+        }
+    }
+    return digest.digest().collect { String.format("%02x", it & 0xff) }.join()
+}
+
+tasks.register("stageMobileReleaseCandidate") {
+    group = "distribution"
+    description = "Copy AP Scanner release APK to ICPBooking server candidates."
+    mustRunAfter("assembleRelease")
+
+    doLast {
+        def sourceApk = file("$buildDir/outputs/apk/release/app-release.apk")
+        if (!sourceApk.isFile()) {
+            logger.lifecycle("AP Scanner release APK not found: ${sourceApk}")
+            return
+        }
+
+        def releaseRoot = resolveMobileReleaseRoot()
+        def candidateDir = new File(releaseRoot, "candidates")
+        if (!candidateDir.exists() && !candidateDir.mkdirs()) {
+            throw new GradleException("Cannot create mobile release candidate dir: ${candidateDir}")
+        }
+
+        def versionNameValue = android.defaultConfig.versionName ?: "0.0.0"
+        def versionCodeValue = android.defaultConfig.versionCode ?: 0
+        def latestMetadataFile = new File(releaseRoot, "latest.json")
+        if (latestMetadataFile.isFile()) {
+            try {
+                def latestMetadata = new groovy.json.JsonSlurper().parse(latestMetadataFile)
+                def latestVersionCode = Integer.parseInt("${latestMetadata.versionCode ?: 0}")
+                if (latestVersionCode >= versionCodeValue) {
+                    throw new GradleException("AP Scanner versionCode ${versionCodeValue} is not newer than released ${latestVersionCode}. Auto bump did not run; run gradlew assembleRelease from the android project.")
+                }
+            } catch (GradleException err) {
+                throw err
+            } catch (Exception err) {
+                logger.warn("Cannot read latest mobile release metadata: ${latestMetadataFile} (${err.message})")
+            }
+        }
+        def safeVersionName = "${versionNameValue}".replaceAll(/[^A-Za-z0-9._-]/, "_")
+        def fileName = "ap-scanner-v${safeVersionName}-${versionCodeValue}.apk"
+        def stagedApk = new File(candidateDir, fileName)
+
+        java.nio.file.Files.copy(
+            sourceApk.toPath(),
+            stagedApk.toPath(),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING
+        )
+
+        def metadata = [
+            id: "ap-scanner-${versionCodeValue}",
+            appId: android.defaultConfig.applicationId ?: "com.icpladda.apscanner",
+            versionName: versionNameValue,
+            versionCode: versionCodeValue,
+            fileName: fileName,
+            apkPath: "candidates/${fileName}",
+            apkSize: stagedApk.length(),
+            sha256: sha256File(stagedApk),
+            builtAt: java.time.Instant.now().toString(),
+            notes: ""
+        ]
+        def metadataFile = new File(candidateDir, "${metadata.id}.json")
+        metadataFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(metadata)) + System.lineSeparator()
+
+        logger.lifecycle("AP Scanner candidate staged: ${metadataFile}")
+    }
+}
+
+tasks.matching { it.name == "assembleRelease" }.configureEach {
+    finalizedBy("stageMobileReleaseCandidate")
+}

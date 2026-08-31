@@ -1,41 +1,44 @@
 {
-  "expo": {
-    "name": "AP Scanner",
-    "slug": "ap-scanner",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icpladda-logo.png",
-    "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/icpladda-logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/icpladda-logo.png",
-        "backgroundColor": "#ffffff"
-      },
-      "predictiveBackGestureEnabled": false,
-      "package": "com.icpladda.apscanner"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "plugins": [
-      "expo-secure-store",
-      "expo-router",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icpladda-logo.png",
-          "color": "#16a34a",
-          "sounds": []
-        }
-      ]
-    ]
-  }
+    "expo": {
+        "name": "AP Scanner",
+        "slug": "ap-scanner",
+        "version": "1.0.1",
+        "orientation": "portrait",
+        "icon": "./assets/icpladda-logo.png",
+        "userInterfaceStyle": "light",
+        "splash": {
+            "image": "./assets/icpladda-logo.png",
+            "resizeMode": "contain",
+            "backgroundColor": "#ffffff"
+        },
+        "ios": {
+            "supportsTablet": true
+        },
+        "android": {
+            "adaptiveIcon": {
+                "foregroundImage": "./assets/icpladda-logo.png",
+                "backgroundColor": "#ffffff"
+            },
+            "versionCode": 2,
+            "predictiveBackGestureEnabled": false,
+            "package": "com.icpladda.apscanner"
+        },
+        "web": {
+            "favicon": "./assets/favicon.png"
+        },
+        "plugins": [
+            "expo-secure-store",
+            "expo-router",
+            [
+                "expo-notifications",
+                {
+                    "icon": "./assets/icpladda-logo.png",
+                    "color": "#16a34a",
+                    "sounds": [
+                        
+                    ]
+                }
+            ]
+        ]
+    }
 }
