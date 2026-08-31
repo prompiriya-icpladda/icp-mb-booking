@@ -1,4 +1,4 @@
-import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, checkinResultPresentation, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames } from "./api";
+import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, checkinResultPresentation, scanResultPrimaryAction, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames } from "./api";
 
 describe("VISITOR_TYPE_OPTIONS", () => {
   it("does not offer rider for new walk-in registrations", () => {
@@ -44,6 +44,35 @@ describe("searchHrEmployees", () => {
       empType: "รายเดือน",
     });
   });
+
+  it("finds monthly employees when searching by department", async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      json: async () => [
+        { employeeCode: "A001", employeeName: "สมชาย บัญชี", department: "บัญชี", emp_type: "รายเดือน" },
+        { employeeCode: "I001", employeeName: "สมหญิง IT", department: "IT", emp_type: "รายเดือน" },
+      ],
+    }));
+    (global as any).fetch = fetchMock;
+
+    const employees = await searchHrEmployees("แผนกบัญชี");
+
+    expect(employees.map((employee) => employee.employeeCode)).toEqual(["A001"]);
+  });
+
+  it("normalizes department aliases from the HR API", async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      json: async () => [
+        { employeeCode: "P001", employeeName: "สมชาย จัดซื้อ", department_name: "จัดซื้อ", emp_type: "รายเดือน" },
+      ],
+    }));
+    (global as any).fetch = fetchMock;
+
+    const employees = await searchHrEmployees("จัดซื้อ");
+
+    expect(employees[0]).toMatchObject({ employeeCode: "P001", department: "จัดซื้อ" });
+  });
 });
 
 describe("fetchRecentCompanyNames", () => {
@@ -81,6 +110,15 @@ describe("longTermStatus", () => {
   });
   it("returns 'arrived' when checked in but not completed", () => {
     expect(longTermStatus({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: null })).toBe("arrived");
+  });
+  it("returns 'completion-requested' while waiting for AP scanner to scan out", () => {
+    expect(
+      longTermStatus({
+        checkedInAt: "2026-06-30T01:00:00Z",
+        completionRequestedAt: "2026-06-30T04:00:00Z",
+        completedAt: null,
+      }),
+    ).toBe("completion-requested");
   });
   it("returns 'checked-out' when completed (even if checkedInAt is set)", () => {
     expect(
@@ -122,14 +160,42 @@ describe("normalStatus", () => {
 });
 
 describe("isLongTermCheckoutable", () => {
-  it("allows a merchant who has arrived", () => {
+  it("allows a merchant waiting for AP scanner completion", () => {
+    expect(
+      isLongTermCheckoutable({
+        visitorType: "merchant",
+        checkedInAt: "2026-06-30T01:00:00Z",
+        completionRequestedAt: "2026-06-30T04:00:00Z",
+        completedAt: null,
+      }),
+    ).toBe(true);
+  });
+  it("allows a rider waiting for AP scanner completion", () => {
+    expect(
+      isLongTermCheckoutable({
+        visitorType: "rider",
+        checkedInAt: "2026-06-30T01:00:00Z",
+        completionRequestedAt: "2026-06-30T04:00:00Z",
+        completedAt: null,
+      }),
+    ).toBe(true);
+  });
+  it("keeps the old rider/merchant arrived checkout behavior", () => {
     expect(
       isLongTermCheckoutable({ visitorType: "merchant", checkedInAt: "2026-06-30T01:00:00Z", completedAt: null }),
     ).toBe(true);
-  });
-  it("allows a rider who has arrived", () => {
     expect(
       isLongTermCheckoutable({ visitorType: "rider", checkedInAt: "2026-06-30T01:00:00Z", completedAt: null }),
+    ).toBe(true);
+  });
+  it("allows a long-term visitor waiting for AP scanner completion", () => {
+    expect(
+      isLongTermCheckoutable({
+        visitorType: "visitor",
+        checkedInAt: "2026-06-30T01:00:00Z",
+        completionRequestedAt: "2026-06-30T04:00:00Z",
+        completedAt: null,
+      }),
     ).toBe(true);
   });
   it("rejects a merchant who only registered (not arrived)", () => {
@@ -158,6 +224,15 @@ describe("isLongTermOnSite", () => {
   it("shows an arrived visitor (checked in, not checked out)", () => {
     expect(isLongTermOnSite({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: null })).toBe(true);
   });
+  it("keeps a completion-requested visitor visible for scan-out", () => {
+    expect(
+      isLongTermOnSite({
+        checkedInAt: "2026-06-30T01:00:00Z",
+        completionRequestedAt: "2026-06-30T04:00:00Z",
+        completedAt: null,
+      }),
+    ).toBe(true);
+  });
   it("hides a registered visitor (not yet arrived)", () => {
     expect(isLongTermOnSite({ checkedInAt: null, completedAt: null })).toBe(false);
   });
@@ -174,15 +249,36 @@ describe("isLongTermOnSite", () => {
 describe("longTermCardAction", () => {
   const arrivedRider = { visitorType: "rider" as const, checkedInAt: "2026-06-30T01:00:00Z", completedAt: null };
   const arrivedMerchant = { visitorType: "merchant" as const, checkedInAt: "2026-06-30T01:00:00Z", completedAt: null };
+  const completionRequestedMerchant = {
+    visitorType: "merchant" as const,
+    checkedInAt: "2026-06-30T01:00:00Z",
+    completionRequestedAt: "2026-06-30T04:00:00Z",
+    completedAt: null,
+  };
 
   it("returns 'select' in select mode regardless of type/status", () => {
     expect(longTermCardAction(arrivedRider, true)).toBe("select");
     expect(longTermCardAction({ visitorType: "visitor", checkedInAt: null, completedAt: null }, true)).toBe("select");
   });
 
-  it("returns 'detail' for an arrived rider/merchant when not in select mode", () => {
+  it("returns 'detail' for old rider/merchant arrived behavior", () => {
     expect(longTermCardAction(arrivedRider, false)).toBe("detail");
     expect(longTermCardAction(arrivedMerchant, false)).toBe("detail");
+  });
+
+  it("returns 'detail' when long-term QR waits for AP scanner completion", () => {
+    expect(longTermCardAction(completionRequestedMerchant, false)).toBe("detail");
+    expect(
+      longTermCardAction(
+        {
+          visitorType: "visitor",
+          checkedInAt: "2026-06-30T01:00:00Z",
+          completionRequestedAt: "2026-06-30T04:00:00Z",
+          completedAt: null,
+        },
+        false,
+      ),
+    ).toBe("detail");
   });
 
   it("returns 'scan' for a rider/merchant that only registered (not arrived)", () => {
@@ -203,6 +299,16 @@ describe("shouldRouteToCheckout", () => {
     expect(
       shouldRouteToCheckout({ success: true, alreadyCheckedIn: true, canCheckout: true }),
     ).toBe(true);
+  });
+  it("returns false after AP scanner already completed the scan-out", () => {
+    expect(
+      shouldRouteToCheckout({
+        success: true,
+        alreadyCheckedIn: true,
+        canCheckout: true,
+        completedAt: "2026-08-30T04:00:00Z",
+      }),
+    ).toBe(false);
   });
   it("returns false on first check-in (not a re-scan)", () => {
     expect(
@@ -233,6 +339,38 @@ describe("checkinResultPresentation", () => {
         completedAt: "2026-08-07T04:00:00Z",
       }),
     ).toEqual({ icon: "✅", title: "เสร็จสิ้นสำเร็จ", color: "#16a34a" });
+  });
+});
+
+describe("scanResultPrimaryAction", () => {
+  it("uses เรียบร้อย and returns to notification after a completion scan", () => {
+    expect(
+      scanResultPrimaryAction({
+        success: true,
+        alreadyCheckedIn: true,
+        completedAt: "2026-08-07T04:00:00Z",
+      }, false),
+    ).toEqual({ label: "เรียบร้อย", action: "done" });
+  });
+
+  it("uses เรียบร้อย and returns to notification after a long-term QR check-in", () => {
+    expect(
+      scanResultPrimaryAction({ success: true, qrMode: "long-term", checkedInAt: "2026-08-31T02:00:00Z" }, false),
+    ).toEqual({ label: "เรียบร้อย", action: "done" });
+  });
+
+  it("keeps scan again for a normal scan opened from the scanner tab", () => {
+    expect(scanResultPrimaryAction({ success: true, alreadyCheckedIn: false }, false)).toEqual({
+      label: "สแกนต่อ",
+      action: "scan",
+    });
+  });
+
+  it("keeps back-to-notifications for non-completion scans opened from notification tab", () => {
+    expect(scanResultPrimaryAction({ success: true, alreadyCheckedIn: false }, true)).toEqual({
+      label: "กลับไปหน้าแจ้งเตือน",
+      action: "back",
+    });
   });
 });
 

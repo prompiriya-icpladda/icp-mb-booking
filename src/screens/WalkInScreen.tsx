@@ -639,7 +639,7 @@ export default function WalkInScreen() {
                   setSelectedHost(null);
                   setHostQuery(v);
                 }}
-                placeholder="ค้นหาชื่อหรือรหัสพนักงานของผู้ที่ต้องการพบ"
+                placeholder="ค้นหาชื่อ รหัสพนักงาน หรือแผนก"
                 placeholderTextColor="#9ca3af"
               />
               {selectedHost && (

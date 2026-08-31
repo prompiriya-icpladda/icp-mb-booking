@@ -12,6 +12,7 @@ import {
   checkinAppointment,
   checkinResultPresentation,
   CheckinResult,
+  scanResultPrimaryAction,
   shouldRouteToCheckout,
 } from "../services/api";
 
@@ -28,9 +29,11 @@ interface ResultDisplay {
 export default function ScannerScreen({
   onBack,
   onCheckout,
+  onDone,
 }: {
   onBack?: () => void;
   onCheckout?: (appointmentId: string) => void;
+  onDone?: () => void;
 }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanState, setScanState] = useState<ScanState>("scanning");
@@ -91,6 +94,20 @@ export default function ScannerScreen({
     processingRef.current = false;
     setResult(null);
     setScanState("scanning");
+  }
+
+  const primaryAction = scanResultPrimaryAction(result?.data, !!onBack);
+
+  function handlePrimaryAction() {
+    if (primaryAction.action === "done") {
+      (onDone ?? onBack ?? resetScan)();
+      return;
+    }
+    if (primaryAction.action === "back") {
+      onBack?.();
+      return;
+    }
+    resetScan();
   }
 
   if (!permission) return <View style={styles.center}><ActivityIndicator /></View>;
@@ -158,15 +175,9 @@ export default function ScannerScreen({
             {result?.errorMsg && (
               <Text style={styles.errorMsg}>{result.errorMsg}</Text>
             )}
-            {onBack ? (
-              <TouchableOpacity style={styles.btn} onPress={onBack}>
-                <Text style={styles.btnText}>กลับไปหน้าแจ้งเตือน</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.btn} onPress={resetScan}>
-                <Text style={styles.btnText}>สแกนต่อ</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity style={styles.btn} onPress={handlePrimaryAction}>
+              <Text style={styles.btnText}>{primaryAction.label}</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

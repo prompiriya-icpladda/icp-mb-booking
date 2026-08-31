@@ -30,79 +30,53 @@ import {
   openMobileReleaseUpdate,
   type MobileReleaseCheckResult,
 } from "./src/utils/mobileReleaseUpdate";
-
-type Tab = "notification" | "scanner" | "walkIn";
+import {
+  BOTTOM_NAV_TABS,
+  shouldShowNavScannerButton,
+  type AppScreen,
+  type MainTab,
+} from "./src/utils/mainNav";
 
 function TabBar({
   active,
   onSelect,
   unread,
 }: {
-  active: Tab;
-  onSelect: (t: Tab) => void;
+  active: MainTab;
+  onSelect: (t: MainTab) => void;
   unread: number;
 }) {
   return (
     <View style={styles.tabBar}>
-      <TouchableOpacity
-        style={[styles.tab, active === "notification" && styles.tabActive]}
-        onPress={() => onSelect("notification")}
-        activeOpacity={0.7}
-      >
-        <View>
-          <Text style={styles.tabIcon}>🔔</Text>
-          {unread > 0 && (
-            <View style={styles.tabBarBadge}>
-              <Text style={styles.tabBarBadgeText}>{unread > 99 ? "99+" : unread}</Text>
+      {BOTTOM_NAV_TABS.map((tab) => {
+        const isActive = active === tab.key;
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            style={[styles.tab, isActive && styles.tabActive]}
+            onPress={() => onSelect(tab.key)}
+            activeOpacity={0.7}
+          >
+            <View>
+              <Text style={styles.tabIcon}>{tab.icon}</Text>
+              {tab.key === "notification" && unread > 0 && (
+                <View style={styles.tabBarBadge}>
+                  <Text style={styles.tabBarBadgeText}>{unread > 99 ? "99+" : unread}</Text>
+                </View>
+              )}
             </View>
-          )}
-        </View>
-        <Text
-          style={[
-            styles.tabLabel,
-            active === "notification" && styles.tabLabelActive,
-          ]}
-        >
-          แจ้งเตือน
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.tab, active === "scanner" && styles.tabActive]}
-        onPress={() => onSelect("scanner")}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.tabIcon}>📷</Text>
-        <Text
-          style={[
-            styles.tabLabel,
-            active === "scanner" && styles.tabLabelActive,
-          ]}
-        >
-          สแกน QR
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.tab, active === "walkIn" && styles.tabActive]}
-        onPress={() => onSelect("walkIn")}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.tabIcon}>📝</Text>
-        <Text
-          style={[
-            styles.tabLabel,
-            active === "walkIn" && styles.tabLabelActive,
-          ]}
-        >
-          ลงทะเบียน
-        </Text>
-      </TouchableOpacity>
+            <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
 
 function MainApp() {
-  const [activeTab, setActiveTab] = useState<Tab>("notification");
-  const [fromNotification, setFromNotification] = useState(false);
+  const [activeTab, setActiveTab] = useState<AppScreen>("notification");
   const [checkoutTargetId, setCheckoutTargetId] = useState<string | null>(null);
   const [unread, setUnread] = useState(0);
   useEffect(() => {
@@ -112,25 +86,23 @@ function MainApp() {
   }, []);
 
   function handleScanRequest() {
-    setFromNotification(true);
     setActiveTab("scanner");
   }
 
   function handleBackToNotification() {
-    setFromNotification(false);
     setActiveTab("notification");
   }
 
   function handleGoCheckout(id: string) {
     setCheckoutTargetId(id);
-    setFromNotification(false);
     setActiveTab("notification");
   }
 
-  function handleTabSelect(t: Tab) {
-    setFromNotification(false);
+  function handleTabSelect(t: MainTab) {
     setActiveTab(t);
   }
+
+  const activeMainTab: MainTab = activeTab === "walkIn" ? "walkIn" : "notification";
 
   return (
     <View style={styles.root}>
@@ -143,14 +115,31 @@ function MainApp() {
           />
         ) : activeTab === "scanner" ? (
           <ScannerScreen
-            onBack={fromNotification ? handleBackToNotification : undefined}
+            onBack={handleBackToNotification}
             onCheckout={handleGoCheckout}
+            onDone={handleBackToNotification}
           />
         ) : (
           <WalkInScreen />
         )}
       </View>
-      <TabBar active={activeTab} onSelect={handleTabSelect} unread={unread} />
+      <TabBar
+        active={activeMainTab}
+        onSelect={handleTabSelect}
+        unread={unread}
+      />
+      {shouldShowNavScannerButton(activeTab) && (
+        <TouchableOpacity
+          testID="nav-scanner-button"
+          accessibilityRole="button"
+          accessibilityLabel="สแกน QR"
+          style={styles.navScannerButton}
+          onPress={handleScanRequest}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.navScannerIcon}>📷</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -293,6 +282,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   tabBar: {
     flexDirection: "row",
+    position: "relative",
     backgroundColor: "#1f2937",
     borderTopWidth: 1,
     borderTopColor: "#374151",
@@ -303,6 +293,25 @@ const styles = StyleSheet.create({
   tabIcon: { fontSize: 20 },
   tabLabel: { color: "#6b7280", fontSize: 11, marginTop: 2 },
   tabLabelActive: { color: "#4ade80" },
+  navScannerButton: {
+    position: "absolute",
+    right: 16,
+    bottom: 104,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: "#ffffff",
+    borderWidth: 3,
+    borderColor: "#111827",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  navScannerIcon: { fontSize: 26, color: "#fff" },
   tabBarBadge: {
     position: "absolute",
     top: -4,

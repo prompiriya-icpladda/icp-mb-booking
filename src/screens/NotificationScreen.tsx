@@ -276,7 +276,7 @@ export default function NotificationScreen({
             </Text>
           </TouchableOpacity>
           {selectMode && (
-            <Text style={styles.selectHint}>เลือกแม่ค้า ที่ "มาแล้ว"</Text>
+            <Text style={styles.selectHint}>เลือกแม่ค้า/ไรเดอร์เดิม หรือรายการ QR ระยะยาวที่ "รอสแกนเสร็จสิ้น"</Text>
           )}
         </View>
       )}
@@ -410,7 +410,7 @@ function AppointmentCard({
   // long-term: longTermCardAction ตัดสิน select/detail/scan; การ์ดปกติ: สแกนเหมือนเดิม
   const wantsDetail = isLongTerm && longTermCardAction(item, selectMode) === "detail";
 
-  // โหมดเลือก: แตะเพื่อเลือก; "มาแล้ว" แม่ค้า/รายการเดิมแบบไม่มี host: เปิดรายละเอียด; อื่นๆ: สแกน
+  // โหมดเลือก: แตะเพื่อเลือก; rider/แม่ค้าที่มาแล้วหรือรอสแกนเสร็จสิ้น: เปิดรายละเอียด; อื่นๆ: สแกน
   const tappable = selectMode
     ? selectable
     : wantsDetail
@@ -546,7 +546,13 @@ function Pill({ icon, text }: { icon: string; text: string }) {
 }
 
 function longTermLabel(s: LongTermStatus) {
-  return s === "registered" ? "ลงทะเบียน" : s === "arrived" ? "มาแล้ว" : "เช็คเอาท์";
+  return s === "registered"
+    ? "ลงทะเบียน"
+    : s === "arrived"
+      ? "มาแล้ว"
+      : s === "completion-requested"
+        ? "รอสแกนเสร็จสิ้น"
+        : "เช็คเอาท์";
 }
 
 function longTermBadgeStyle(s: LongTermStatus) {
@@ -554,6 +560,8 @@ function longTermBadgeStyle(s: LongTermStatus) {
     ? styles.statusPending
     : s === "arrived"
       ? styles.statusChecked
+      : s === "completion-requested"
+        ? styles.statusCompletionRequested
       : styles.statusCheckedOut;
 }
 
@@ -592,6 +600,8 @@ function longTermTextStyle(s: LongTermStatus) {
     ? styles.statusPendingText
     : s === "arrived"
       ? styles.statusCheckedText
+      : s === "completion-requested"
+        ? styles.statusCompletionRequestedText
       : styles.statusCheckedOutText;
 }
 

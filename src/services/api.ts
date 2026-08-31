@@ -79,7 +79,7 @@ export async function checkinAppointment(id: string): Promise<CheckinResult> {
 
 // สแกนซ้ำแม่ค้า/รายการเดิมที่ยัง "มาแล้ว" (ยังเช็คเอาท์ได้) → ให้เด้งไปหน้าเช็คเอาท์
 export function shouldRouteToCheckout(res: CheckinResult): boolean {
-  return !!(res.success && res.alreadyCheckedIn && res.canCheckout);
+  return !!(res.success && res.alreadyCheckedIn && res.canCheckout && !res.completedAt);
 }
 
 export function checkinResultPresentation(res: CheckinResult): {
@@ -93,6 +93,24 @@ export function checkinResultPresentation(res: CheckinResult): {
   return res.alreadyCheckedIn
     ? { icon: "⚠️", title: "เช็คอินซ้ำ", color: "#d97706" }
     : { icon: "✅", title: "เช็คอินสำเร็จ", color: "#16a34a" };
+}
+
+export type ScanResultPrimaryAction = {
+  label: string;
+  action: "scan" | "back" | "done";
+};
+
+export function scanResultPrimaryAction(
+  res: CheckinResult | null | undefined,
+  hasBackToNotification: boolean,
+): ScanResultPrimaryAction {
+  if (res?.success && (res.completedAt || res.qrMode === "long-term")) {
+    return { label: "เรียบร้อย", action: "done" };
+  }
+  if (hasBackToNotification) {
+    return { label: "กลับไปหน้าแจ้งเตือน", action: "back" };
+  }
+  return { label: "สแกนต่อ", action: "scan" };
 }
 
 // สแกนออก — ทำเครื่องหมายว่าแม่ค้า/รายการเดิม "ไปแล้ว" (รองรับเฉพาะกลุ่มไม่มี host ฝั่ง backend)
@@ -123,13 +141,14 @@ export interface TodayAppointment {
   visitorType?: VisitorType;
 }
 
-export type LongTermStatus = "registered" | "arrived" | "checked-out";
+export type LongTermStatus = "registered" | "arrived" | "completion-requested" | "checked-out";
 
 // อนุมานสถานะ long-term จาก timestamp ที่ server คืนมา (completedAt ชนะ checkedInAt)
 export function longTermStatus(
-  a: Pick<TodayAppointment, "checkedInAt" | "completedAt">,
+  a: Pick<TodayAppointment, "checkedInAt" | "completionRequestedAt" | "completedAt">,
 ): LongTermStatus {
   if (a.completedAt) return "checked-out";
+  if (a.completionRequestedAt) return "completion-requested";
   if (a.checkedInAt) return "arrived";
   return "registered";
 }
@@ -147,32 +166,32 @@ export function normalStatus(
   return "pending";
 }
 
-// เลือกเช็คเอาท์ในแอปได้เฉพาะแม่ค้า/รายการเดิมแบบไม่มี host ที่สถานะ "มาแล้ว"
+// เลือกเช็คเอาท์ในแอป: คง rider/แม่ค้าที่มาแล้วแบบเดิม + เพิ่ม QR ระยะยาวที่ "รอสแกนเสร็จสิ้น"
 export function isLongTermCheckoutable(
-  a: Pick<TodayAppointment, "checkedInAt" | "completedAt" | "visitorType">,
+  a: Pick<TodayAppointment, "checkedInAt" | "completionRequestedAt" | "completedAt" | "visitorType">,
 ): boolean {
-  return (
-    (a.visitorType === "rider" || a.visitorType === "merchant") &&
-    longTermStatus(a) === "arrived"
-  );
+  const status = longTermStatus(a);
+  if (status === "completion-requested") return true;
+  return (a.visitorType === "rider" || a.visitorType === "merchant") && status === "arrived";
 }
 
 // แท็บ "ระยะยาว" โชว์เฉพาะคนที่อยู่ในพื้นที่ตอนนี้ = "มาแล้ว" (เช็คอินแล้ว ยังไม่เช็คเอาท์)
 // ซ่อน "ลงทะเบียน" (ยังไม่มา) และ "เช็คเอาท์" (ไปแล้ว)
 export function isLongTermOnSite(
-  a: Pick<TodayAppointment, "checkedInAt" | "completedAt">,
+  a: Pick<TodayAppointment, "checkedInAt" | "completionRequestedAt" | "completedAt">,
 ): boolean {
-  return longTermStatus(a) === "arrived";
+  const status = longTermStatus(a);
+  return status === "arrived" || status === "completion-requested";
 }
 
 export type LongTermCardAction = "detail" | "scan" | "select";
 
 // ตัดสินว่าแตะการ์ด long-term แล้วทำอะไร (pure → unit test ได้)
 //  - select mode: เลือก
-//  - มาแล้ว + แม่ค้า/รายการเดิมแบบไม่มี host: เปิดหน้ารายละเอียด
+//  - rider/แม่ค้าที่มาแล้ว หรือ QR ระยะยาวที่รอสแกนเสร็จสิ้น: เปิดหน้ารายละเอียด
 //  - อื่นๆ: ไปสแกน (เหมือนเดิม)
 export function longTermCardAction(
-  a: Pick<TodayAppointment, "checkedInAt" | "completedAt" | "visitorType">,
+  a: Pick<TodayAppointment, "checkedInAt" | "completionRequestedAt" | "completedAt" | "visitorType">,
   selectMode: boolean,
 ): LongTermCardAction {
   if (selectMode) return "select";
@@ -271,8 +290,23 @@ type RawHrEmployee = Partial<HrEmployee> & {
   full_name?: string;
   nickName?: string;
   nick_name?: string;
+  departmentName?: string;
+  department_name?: string;
+  dept?: string;
+  deptName?: string;
+  dept_name?: string;
   emp_type?: string;
 };
+
+function normalizeHrSearchText(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function hrSearchTerms(keyword: string) {
+  const query = normalizeHrSearchText(keyword);
+  const withoutDepartmentPrefix = query.replace(/^(แผนก|ฝ่าย|dept\.?|department)\s*/i, "").trim();
+  return Array.from(new Set([query, withoutDepartmentPrefix].filter(Boolean)));
+}
 
 function normalizeHrEmployee(item: RawHrEmployee): HrEmployee | null {
   const employeeCode =
@@ -293,7 +327,13 @@ function normalizeHrEmployee(item: RawHrEmployee): HrEmployee | null {
     employeeCode,
     name,
     nickname: item.nickname ?? item.nickName ?? item.nick_name,
-    department: item.department,
+    department:
+      item.department ??
+      item.departmentName ??
+      item.department_name ??
+      item.dept ??
+      item.deptName ??
+      item.dept_name,
     position: item.position,
     userId: item.userId ?? item.user_id ?? item.userid,
     employeeId: item.employeeId ?? item.employee_id,
@@ -355,7 +395,7 @@ function normalizeHrResponse(data: unknown, keyword: string): HrEmployee[] {
 
   if (!keyword.trim()) return normalized;
 
-  const q = keyword.trim().toLowerCase();
+  const terms = hrSearchTerms(keyword);
   return normalized.filter((item) => {
     const haystack = [
       item.employeeCode,
@@ -366,7 +406,7 @@ function normalizeHrResponse(data: unknown, keyword: string): HrEmployee[] {
     ]
       .join(" ")
       .toLowerCase();
-    return haystack.includes(q);
+    return terms.some((term) => haystack.includes(term));
   });
 }
 
