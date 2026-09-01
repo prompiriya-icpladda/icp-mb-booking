@@ -11,7 +11,14 @@ const safe = (label: string, fn: () => Promise<boolean>): Promise<boolean> => {
     console.log(`[KIOSK] ${label} skipped — module=${!!KioskModule}`);
     return noop();
   }
-  return fn()
+  let result: Promise<boolean>;
+  try {
+    result = fn();
+  } catch (e) {
+    console.log(`[KIOSK] ${label} error:`, e);
+    return noop();
+  }
+  return result
     .then((r) => { console.log(`[KIOSK] ${label} result:`, r); return r; })
     .catch((e) => { console.log(`[KIOSK] ${label} error:`, e); return false; });
 };
@@ -21,4 +28,5 @@ export const kioskModule = {
   startKiosk:    () => safe('startKiosk', () => KioskModule.startKiosk()),
   stopKiosk:     () => safe('stopKiosk', () => KioskModule.stopKiosk()),
   isInKioskMode: () => safe('isInKioskMode', () => KioskModule.isInKioskMode()),
+  playNotificationSound: () => safe('playNotificationSound', () => KioskModule.playNotificationSound?.() ?? noop()),
 };

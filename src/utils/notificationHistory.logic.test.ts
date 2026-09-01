@@ -59,6 +59,42 @@ describe("addEntryToList", () => {
     const out = addEntryToList([head], next, NOW + 30_000);
     expect(out.map((e) => e.id)).toEqual(["u1"]);
   });
+  it("ไม่ dedupe check-in คนละรายการภายใน 60 วิ", () => {
+    const head = entry({
+      id: "u1",
+      kind: "update",
+      title: "✅ เช็คอินแล้ว",
+      body: "สมชาย (บริษัท A) เช็คอินแล้ว",
+      timestamp: NOW,
+    });
+    const next = entry({
+      id: "u2",
+      kind: "update",
+      title: "✅ เช็คอินแล้ว",
+      body: "สมหญิง (บริษัท B) เช็คอินแล้ว",
+      timestamp: NOW + 30_000,
+    });
+    const out = addEntryToList([head], next, NOW + 30_000);
+    expect(out.map((e) => e.id)).toEqual(["u2", "u1"]);
+  });
+  it("ไม่ dedupe check-in คนเดิมภายใน 60 วิ", () => {
+    const head = entry({
+      id: "u1",
+      kind: "update",
+      title: "✅ เช็คอินแล้ว",
+      body: "สมชาย (บริษัท A) เช็คอินแล้ว",
+      timestamp: NOW,
+    });
+    const next = entry({
+      id: "u2",
+      kind: "update",
+      title: "✅ เช็คอินแล้ว",
+      body: "สมชาย (บริษัท A) เช็คอินแล้ว",
+      timestamp: NOW + 30_000,
+    });
+    const out = addEntryToList([head], next, NOW + 30_000);
+    expect(out.map((e) => e.id)).toEqual(["u2", "u1"]);
+  });
   it("ไม่ dedupe update ที่ห่างเกิน 60 วิ", () => {
     const head = entry({ id: "u1", kind: "update", timestamp: NOW });
     const next = entry({ id: "u2", kind: "update", timestamp: NOW + 61_000 });

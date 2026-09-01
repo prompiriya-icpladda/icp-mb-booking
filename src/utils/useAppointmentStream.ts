@@ -1,12 +1,25 @@
 import { useEffect, useRef } from "react";
 import { API_URL } from "../services/api";
+import type { AppointmentStreamPayload } from "./appointmentStreamNotification";
 
 const STREAM_URL = `${API_URL}/visitor-appointments/stream`;
 const RETRY_DELAY_MS = 5000;
 
-export function useAppointmentStream(onNewAppointment: () => void) {
-  const onNewRef = useRef(onNewAppointment);
-  onNewRef.current = onNewAppointment;
+export function parseAppointmentStreamPayload(payload: string): AppointmentStreamPayload | null {
+  const trimmed = payload.trim();
+  if (!trimmed || trimmed === "connected") return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as AppointmentStreamPayload;
+  } catch {
+    return null;
+  }
+}
+
+export function useAppointmentStream(onAppointmentEvent: (payload: AppointmentStreamPayload) => void) {
+  const onNewRef = useRef(onAppointmentEvent);
+  onNewRef.current = onAppointmentEvent;
 
   useEffect(() => {
     let xhr: XMLHttpRequest | null = null;
@@ -31,8 +44,9 @@ export function useAppointmentStream(onNewAppointment: () => void) {
           for (const line of chunk.split("\n")) {
             if (!line.startsWith("data: ")) continue;
             const payload = line.slice(6).trim();
-            if (payload && payload !== "connected") {
-              onNewRef.current();
+            const appointment = parseAppointmentStreamPayload(payload);
+            if (appointment) {
+              onNewRef.current(appointment);
             }
           }
         }

@@ -21,6 +21,7 @@ export interface AddEntryInput {
 
 export const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 วัน
 export const UPDATE_DEDUPE_MS = 60 * 1000; // 60 วินาที
+const DISTINCT_UPDATE_TITLES = new Set(["✅ เช็คอินแล้ว"]);
 
 export function createEntry(
   input: AddEntryInput,
@@ -56,8 +57,11 @@ export function addEntryToList(
   maxAgeMs: number = MAX_AGE_MS,
 ): NotificationHistoryEntry[] {
   const head = list[0];
+  const shouldKeepDistinctUpdate =
+    entry.kind === "update" && DISTINCT_UPDATE_TITLES.has(entry.title);
   const isDuplicateUpdate =
     entry.kind === "update" &&
+    !shouldKeepDistinctUpdate &&
     head?.kind === "update" &&
     entry.timestamp - head.timestamp < dedupeMs;
   const next = isDuplicateUpdate ? list : [entry, ...list];

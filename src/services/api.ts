@@ -143,6 +143,7 @@ export interface TodayAppointment {
   completionRequestedAt?: string | null;
   visitorCount: number;
   createdByName: string;
+  createdAt?: string;
   qrMode?: VisitorQrMode;
   completedAt?: string | null;
   visitorType?: VisitorType;

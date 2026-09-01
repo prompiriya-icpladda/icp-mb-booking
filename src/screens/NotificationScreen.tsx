@@ -12,23 +12,34 @@ import {
 import { AppText as Text } from "../theme/typography";
 import { checkoutAppointment, getActiveLongTermAppointments, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, longTermStatus, LongTermStatus, normalStatus, NormalStatus, sortAppointmentsByLatest, TodayAppointment } from "../services/api";
 import { checkAndNotify, notifyNow } from "../utils/notificationService";
+import { appointmentStreamNotificationCopy } from "../utils/appointmentStreamNotification";
+import {
+  appointmentNotificationTarget,
+  type AppointmentNotificationTarget,
+} from "../utils/appointmentNotificationTarget";
 import { useAppointmentStream } from "../utils/useAppointmentStream";
 import LongTermDetailScreen from "./LongTermDetailScreen";
 import { clearHistory, getHistory, getUnreadCount, markAllRead, subscribe } from "../utils/notificationHistory";
+import { resolveHistoryFocus, type AppointmentListTab } from "../utils/notificationHistoryFocus";
 import { formatRelativeTime, NotificationHistoryEntry } from "../utils/notificationHistory.logic";
 
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 นาที
 
-type AppointmentTab = "normal" | "longTerm" | "history";
+type AppointmentTab = AppointmentListTab | "history";
+type PendingFocus = { appointmentId: string; tab: AppointmentListTab };
 
 export default function NotificationScreen({
   onScanRequest,
   openCheckoutId,
   onCheckoutConsumed,
+  notificationTarget,
+  onNotificationTargetConsumed,
 }: {
   onScanRequest?: () => void;
   openCheckoutId?: string | null;
   onCheckoutConsumed?: () => void;
+  notificationTarget?: AppointmentNotificationTarget | null;
+  onNotificationTargetConsumed?: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<AppointmentTab>("normal");
   // นัดหมายปกติ = single-use ของวันนี้ (มาเช็คอินตามเวลา)
@@ -49,6 +60,7 @@ export default function NotificationScreen({
   const listRef = useRef<FlatList<TodayAppointment>>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pendingCheckoutId, setPendingCheckoutId] = useState<string | null>(null);
+  const [pendingFocus, setPendingFocus] = useState<PendingFocus | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchAppointments = useCallback(async () => {
@@ -95,10 +107,14 @@ export default function NotificationScreen({
   }, []);
 
   // รับแจ้งเตือนทันทีเมื่อมีการเปลี่ยนแปลงจาก server (SSE)
-  useAppointmentStream(useCallback(() => {
-    notifyNow("🔔 มีการอัปเดตนัดหมาย", "กรุณาตรวจสอบรายการนัดหมาย").catch(() => {});
+  useAppointmentStream(useCallback((appointment) => {
+    const copy = appointmentStreamNotificationCopy(appointment, [
+      ...todayAppointments,
+      ...longTermAppointments,
+    ]);
+    notifyNow(copy.title, copy.body, appointmentNotificationTarget(appointment) ?? {}).catch(() => {});
     fetchAppointments();
-  }, [fetchAppointments]));
+  }, [fetchAppointments, todayAppointments, longTermAppointments]));
 
   useEffect(() => {
     exitSelectMode();
@@ -124,6 +140,42 @@ export default function NotificationScreen({
       setPendingCheckoutId(null);
     }
   }, [pendingCheckoutId, longTermAppointments]);
+
+  const isLongTerm = activeTab === "longTerm";
+  const isHistory = activeTab === "history";
+  const list = isLongTerm ? longTermAppointments : todayAppointments;
+
+  const highlightAppointment = useCallback((appointmentId: string) => {
+    setHighlightId(appointmentId);
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    highlightTimer.current = setTimeout(() => setHighlightId(null), 2500);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingFocus || activeTab !== pendingFocus.tab) return;
+    const pool = pendingFocus.tab === "longTerm" ? longTermAppointments : todayAppointments;
+    const index = pool.findIndex((appointment) => appointment._id === pendingFocus.appointmentId);
+    if (index < 0) return;
+
+    const timer = setTimeout(() => {
+      try {
+        listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+      } catch {
+        // เลื่อนไม่ได้ก็ไม่เป็นไร
+      }
+      setPendingFocus(null);
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [activeTab, longTermAppointments, pendingFocus, todayAppointments]);
+
+  useEffect(() => {
+    if (!notificationTarget) return;
+    setActiveTab(notificationTarget.tab);
+    highlightAppointment(notificationTarget.appointmentId);
+    setPendingFocus(notificationTarget);
+    onNotificationTargetConsumed?.();
+  }, [highlightAppointment, notificationTarget, onNotificationTargetConsumed]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -167,33 +219,18 @@ export default function NotificationScreen({
   }
 
   function handleHistoryPress(item: NotificationHistoryEntry) {
-    const targetTab: AppointmentTab = item.tab ?? "normal";
-    const pool = targetTab === "longTerm" ? longTermAppointments : todayAppointments;
-    const found = item.appointmentId
-      ? pool.find((a) => a._id === item.appointmentId)
-      : undefined;
+    const focus = resolveHistoryFocus(item, todayAppointments, longTermAppointments);
 
-    setActiveTab(targetTab);
+    setActiveTab(focus.targetTab);
 
-    if (item.appointmentId && !found) {
+    if (item.appointmentId && !focus.found) {
       Alert.alert("ไม่พบนัดหมาย", "นัดหมายนี้ไม่อยู่ในรายการแล้ว");
       return;
     }
-    if (!found) return; // entry แบบ update ไม่มี id → แค่สลับไปแท็บปกติ
+    if (!focus.appointmentId) return; // entry แบบ update ไม่มี id → แค่สลับไปแท็บปกติ
 
-    setHighlightId(found._id);
-    if (highlightTimer.current) clearTimeout(highlightTimer.current);
-    highlightTimer.current = setTimeout(() => setHighlightId(null), 2500);
-
-    // best-effort scroll ไปการ์ดเป้าหมายหลังแท็บ render
-    setTimeout(() => {
-      try {
-        const index = pool.findIndex((a) => a._id === found._id);
-        if (index >= 0) listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
-      } catch {
-        // เลื่อนไม่ได้ก็ไม่เป็นไร
-      }
-    }, 200);
+    highlightAppointment(focus.appointmentId);
+    setPendingFocus({ appointmentId: focus.appointmentId, tab: focus.targetTab });
   }
 
   const today = new Date().toLocaleDateString("th-TH", {
@@ -202,10 +239,6 @@ export default function NotificationScreen({
     month: "long",
     day: "numeric",
   });
-
-  const isLongTerm = activeTab === "longTerm";
-  const isHistory = activeTab === "history";
-  const list = isLongTerm ? longTermAppointments : todayAppointments;
 
   return (
     <View style={styles.container}>
@@ -737,7 +770,7 @@ const styles = StyleSheet.create({
   selectHint: { color: "#6b7280", fontSize: 12, flex: 1 },
   cardDisabled: { opacity: 0.45 },
   cardSelected: { borderWidth: 2, borderColor: "#16a34a" },
-  cardHighlight: { borderWidth: 2, borderColor: "#f59e0b", backgroundColor: "#fffbeb" },
+  cardHighlight: { borderWidth: 2, borderColor: "#2563eb", backgroundColor: "#dbeafe" },
   checkbox: {
     width: 26,
     height: 26,

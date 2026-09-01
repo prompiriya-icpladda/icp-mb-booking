@@ -5,6 +5,7 @@ import {
   Kanit_700Bold,
   useFonts,
 } from "@expo-google-fonts/kanit";
+import * as Notifications from "expo-notifications";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from "react-native";
@@ -36,6 +37,10 @@ import {
   sanitizeKioskPinInput,
   verifyKioskAdminPassword,
 } from "./src/utils/kioskAdminPassword";
+import {
+  notificationTargetFromData,
+  type AppointmentNotificationTarget,
+} from "./src/utils/appointmentNotificationTarget";
 import {
   BOTTOM_NAV_TABS,
   shouldShowNavScannerButton,
@@ -84,11 +89,26 @@ function TabBar({
 function MainApp() {
   const [activeTab, setActiveTab] = useState<AppScreen>("notification");
   const [checkoutTargetId, setCheckoutTargetId] = useState<string | null>(null);
+  const [notificationTarget, setNotificationTarget] = useState<AppointmentNotificationTarget | null>(null);
   const [unread, setUnread] = useState(0);
   useEffect(() => {
     const refresh = () => setUnread(getUnreadCount());
     refresh();
     return subscribe(refresh);
+  }, []);
+
+  useEffect(() => {
+    function handleNotificationResponse(response?: Notifications.NotificationResponse | null) {
+      if (!response) return;
+      const target = notificationTargetFromData(response.notification.request.content.data);
+      if (!target) return;
+      setNotificationTarget(target);
+      setActiveTab("notification");
+    }
+
+    handleNotificationResponse(Notifications.getLastNotificationResponse?.() ?? null);
+    const subscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+    return () => subscription.remove();
   }, []);
 
   function handleScanRequest() {
@@ -118,6 +138,8 @@ function MainApp() {
             onScanRequest={handleScanRequest}
             openCheckoutId={checkoutTargetId}
             onCheckoutConsumed={() => setCheckoutTargetId(null)}
+            notificationTarget={notificationTarget}
+            onNotificationTargetConsumed={() => setNotificationTarget(null)}
           />
         ) : activeTab === "scanner" ? (
           <ScannerScreen

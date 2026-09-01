@@ -4,8 +4,9 @@ import * as SecureStore from "expo-secure-store";
 import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
 import { getTodayAppointments, registerMobilePushToken, TodayAppointment } from "../services/api";
+import { kioskModule } from "./kioskModule";
 import { addHistoryEntry } from "./notificationHistory";
-import type { NotificationKind } from "./notificationHistory.logic";
+import type { NotificationKind, NotificationHistoryEntry } from "./notificationHistory.logic";
 
 export const BACKGROUND_TASK = "check-today-appointments";
 const SEEN_KEY = "notified_appointment_ids";
@@ -102,25 +103,38 @@ async function fireNotification(opts: {
   kind: NotificationKind;
   badge?: number;
   appointmentId?: string;
-  tab?: "normal" | "longTerm";
+  tab?: NotificationHistoryEntry["tab"];
 }) {
   const { title, body, kind, badge = 1, appointmentId, tab } = opts;
+  const data = {
+    ...(appointmentId ? { appointmentId } : {}),
+    ...(tab ? { tab } : {}),
+  };
+  await setupAndroidChannel();
+  const trigger = Platform.OS === "android" ? { channelId: CHANNEL_ID } : null;
   await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,
       sound: "default",
       badge,
-      ...(Platform.OS === "android" && { channelId: CHANNEL_ID }),
+      data,
     },
-    trigger: null,
+    trigger,
   });
+  if (Platform.OS === "android") {
+    kioskModule.playNotificationSound().catch(() => {});
+  }
   // บันทึกประวัติแบบ best-effort — push ต้องเด้งได้เสมอแม้ log fail
   addHistoryEntry({ title, body, kind, appointmentId, tab }).catch(() => {});
 }
 
-export async function notifyNow(title: string, body: string) {
-  await fireNotification({ title, body, kind: "update" });
+export async function notifyNow(
+  title: string,
+  body: string,
+  target: Pick<Parameters<typeof fireNotification>[0], "appointmentId" | "tab"> = {},
+) {
+  await fireNotification({ title, body, kind: "update", ...target });
 }
 
 async function getSeenIds(): Promise<Set<string>> {

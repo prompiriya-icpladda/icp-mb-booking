@@ -16,6 +16,7 @@ import {
   scanResultPrimaryAction,
   scannerPostCheckinAction,
 } from "../services/api";
+import { scanResultDateText } from "../utils/visitorAppointmentDisplay";
 
 type ScanState = "scanning" | "loading" | "result";
 
@@ -182,7 +183,7 @@ export default function ScannerScreen({
               <View style={styles.infoBox}>
                 <InfoRow label="ผู้มาเยือน" value={result.data.visitorName} />
                 <InfoRow label="มาพบ" value={result.data.createdByName} />
-                <InfoRow label="วันที่" value={`${result.data.appointmentDate} ${result.data.appointmentTime}`} />
+                <InfoRow label="วันที่" value={scanResultDateText(result.data)} />
                 <InfoRow label="จุดประสงค์" value={result.data.purpose} />
                 {result.data.hasVehicle && result.data.licensePlate && (
                   <InfoRow label="ทะเบียน" value={result.data.licensePlate} />
