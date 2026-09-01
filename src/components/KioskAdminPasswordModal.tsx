@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Modal, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Modal, StyleSheet, TouchableOpacity, View, type TextInputProps } from "react-native";
 import {
   AppText as Text,
   AppTextInput as TextInput,
@@ -13,6 +13,10 @@ export function KioskAdminPasswordModal({
   password,
   error,
   confirmLabel = "ยืนยัน",
+  placeholder = "รหัสผ่าน",
+  keyboardType = "default",
+  maxLength,
+  helperText,
   onChangePassword,
   onCancel,
   onConfirm,
@@ -23,6 +27,10 @@ export function KioskAdminPasswordModal({
   password: string;
   error: string;
   confirmLabel?: string;
+  placeholder?: string;
+  keyboardType?: TextInputProps["keyboardType"];
+  maxLength?: number;
+  helperText?: string;
   onChangePassword: (value: string) => void;
   onCancel: () => void;
   onConfirm: () => void;
@@ -41,14 +49,17 @@ export function KioskAdminPasswordModal({
         <View style={styles.dialog}>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
+          {!!helperText && <Text style={styles.helper}>{helperText}</Text>}
           <TextInput
             ref={inputRef}
             style={styles.input}
             value={password}
             onChangeText={onChangePassword}
             secureTextEntry
-            placeholder="รหัสผ่าน"
+            placeholder={placeholder}
             placeholderTextColor="#6b7280"
+            keyboardType={keyboardType}
+            maxLength={maxLength}
             returnKeyType="done"
             onSubmitEditing={onConfirm}
           />
@@ -91,6 +102,11 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
     fontSize: 14,
     marginBottom: 16,
+  },
+  helper: {
+    color: "#fbbf24",
+    fontSize: 13,
+    marginBottom: 12,
   },
   input: {
     backgroundColor: "#111827",

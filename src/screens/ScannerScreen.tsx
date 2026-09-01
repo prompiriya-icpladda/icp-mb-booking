@@ -9,11 +9,12 @@ import {
 } from "react-native";
 import { AppText as Text } from "../theme/typography";
 import {
+  checkoutAppointment,
   checkinAppointment,
   checkinResultPresentation,
   CheckinResult,
   scanResultPrimaryAction,
-  shouldRouteToCheckout,
+  scannerPostCheckinAction,
 } from "../services/api";
 
 type ScanState = "scanning" | "loading" | "result";
@@ -28,7 +29,6 @@ interface ResultDisplay {
 
 export default function ScannerScreen({
   onBack,
-  onCheckout,
   onDone,
 }: {
   onBack?: () => void;
@@ -57,9 +57,26 @@ export default function ScannerScreen({
     setScanState("loading");
     try {
       const res = await checkinAppointment(id);
-      if (onCheckout && shouldRouteToCheckout(res)) {
-        onCheckout(id);
-        return; // ข้าม modal — กำลังเด้งไปหน้าแจ้งเตือนเพื่อเช็คเอาท์ (อย่า setState ต่อ: หน้านี้กำลังจะ unmount)
+      if (scannerPostCheckinAction(res) === "checkout") {
+        const checkout = await checkoutAppointment(id);
+        if (checkout.success) {
+          setResult({
+            icon: "✅",
+            title: "เช็คเอาท์สำเร็จ",
+            color: "#16a34a",
+            data: { ...res, completedAt: new Date().toISOString() },
+          });
+        } else {
+          setResult({
+            icon: "❌",
+            title: "เช็คเอาท์ไม่สำเร็จ",
+            color: "#dc2626",
+            data: null,
+            errorMsg: checkout.error || "บันทึกการเช็คเอาท์ไม่สำเร็จ",
+          });
+        }
+        setScanState("result");
+        return;
       }
       if (res.success) {
         const presentation = checkinResultPresentation(res);

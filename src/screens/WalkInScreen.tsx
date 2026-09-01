@@ -41,6 +41,7 @@ import type {
   PdpaSignaturePoint,
   PdpaSignatureStroke,
 } from "../utils/pdpaConsent";
+import { confirmWalkInSubmit } from "../utils/walkInConfirm";
 
 const MIN_VEHICLE_COUNT = 1;
 const SIGNATURE_POINT_MIN_DISTANCE = 2;
@@ -453,8 +454,13 @@ export default function WalkInScreen() {
     return null;
   }
 
+  function visitorTypeConfirmLabel() {
+    return VISITOR_TYPE_OPTIONS.find((option) => option.value === visitorType)?.label ?? visitorType;
+  }
+
   async function submit() {
     Keyboard.dismiss();
+    if (submitting) return;
 
     let host = selectedHost;
     if (hostRequired && !host && hostQuery.trim().length >= 2) {
@@ -480,6 +486,27 @@ export default function WalkInScreen() {
     const plates = hasVehicle ? activeLicensePlates() : [];
     const normalizedCompanyName = companyVisible ? companyName.trim() : "";
 
+    confirmWalkInSubmit(
+      {
+        visitorName: visitorName.trim(),
+        visitorTypeLabel: visitorTypeConfirmLabel(),
+        companyName: normalizedCompanyName,
+        hostName: host?.name ?? "",
+        notifyDepartmentRelated: hostRequired && includeDepartmentRelatedEmployees,
+        visitorCount,
+        licensePlates: plates,
+      },
+      Alert.alert,
+      () => { void submitConfirmed(host, plates, normalizedCompanyName); },
+    );
+  }
+
+  async function submitConfirmed(
+    host: HrEmployee | null,
+    plates: string[],
+    normalizedCompanyName: string,
+  ) {
+    if (submitting) return;
     setSubmitting(true);
     setMessage(null);
     try {

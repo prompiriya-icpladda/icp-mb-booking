@@ -37,6 +37,7 @@ export interface CheckinResult {
   visitorType?: string;
   visitorTypeValue?: VisitorType;
   canCheckout?: boolean;
+  checkedInAt?: string | null;
   completionRequestedAt?: string | null;
   completedAt?: string | null;
   qrMode?: VisitorQrMode;
@@ -77,9 +78,15 @@ export async function checkinAppointment(id: string): Promise<CheckinResult> {
   return res.json();
 }
 
-// สแกนซ้ำแม่ค้า/รายการเดิมที่ยัง "มาแล้ว" (ยังเช็คเอาท์ได้) → ให้เด้งไปหน้าเช็คเอาท์
+// สแกนซ้ำรายการเดิมที่ยัง "มาแล้ว" (ยังเช็คเอาท์ได้) → ต้องทำขั้นตอนออกต่อ
 export function shouldRouteToCheckout(res: CheckinResult): boolean {
   return !!(res.success && res.alreadyCheckedIn && res.canCheckout && !res.completedAt);
+}
+
+export type ScannerPostCheckinAction = "checkout" | "result";
+
+export function scannerPostCheckinAction(res: CheckinResult): ScannerPostCheckinAction {
+  return res.qrMode === "long-term" && shouldRouteToCheckout(res) ? "checkout" : "result";
 }
 
 export function checkinResultPresentation(res: CheckinResult): {

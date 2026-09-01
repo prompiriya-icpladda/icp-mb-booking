@@ -6,10 +6,9 @@ export interface KioskControls {
 
 export async function startKioskWhenNeeded(kiosk: KioskControls): Promise<boolean> {
   const alreadyLocked = await kiosk.isInKioskMode();
-  if (alreadyLocked) return true;
-
   const isOwner = await kiosk.isDeviceOwner();
-  if (!isOwner) return false;
+  if (!isOwner) return alreadyLocked;
 
-  return kiosk.startKiosk();
+  const refreshed = await kiosk.startKiosk();
+  return refreshed || alreadyLocked;
 }

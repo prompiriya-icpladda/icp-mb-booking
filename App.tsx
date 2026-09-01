@@ -31,7 +31,11 @@ import {
   openMobileReleaseUpdate,
   type MobileReleaseCheckResult,
 } from "./src/utils/mobileReleaseUpdate";
-import { verifyKioskAdminPassword } from "./src/utils/kioskAdminPassword";
+import {
+  hasKioskAdminPin,
+  sanitizeKioskPinInput,
+  verifyKioskAdminPassword,
+} from "./src/utils/kioskAdminPassword";
 import {
   BOTTOM_NAV_TABS,
   shouldShowNavScannerButton,
@@ -208,6 +212,7 @@ export default function App() {
   const [updatePasswordVisible, setUpdatePasswordVisible] = useState(false);
   const [updatePassword, setUpdatePassword] = useState("");
   const [updatePasswordError, setUpdatePasswordError] = useState("");
+  const [updatePinConfigured, setUpdatePinConfigured] = useState(false);
 
   async function refreshRequiredUpdate() {
     setUpdateChecking(true);
@@ -224,6 +229,11 @@ export default function App() {
 
   async function handleOpenRequiredUpdate() {
     if (!requiredUpdate?.release) return;
+    try {
+      setUpdatePinConfigured(await hasKioskAdminPin());
+    } catch {
+      setUpdatePinConfigured(false);
+    }
     setUpdatePasswordVisible(true);
     setUpdatePassword("");
     setUpdatePasswordError("");
@@ -238,7 +248,7 @@ export default function App() {
   async function confirmOpenRequiredUpdate() {
     if (!requiredUpdate?.release) return;
     if (!(await verifyKioskAdminPassword(updatePassword))) {
-      setUpdatePasswordError("รหัสผ่านไม่ถูกต้อง");
+      setUpdatePasswordError(updatePinConfigured ? "PIN ไม่ถูกต้อง" : "รหัสผ่านไม่ถูกต้อง");
       setUpdatePassword("");
       return;
     }
@@ -299,12 +309,20 @@ export default function App() {
       <KioskAdminPasswordModal
         visible={updatePasswordVisible}
         title="อัปเดต AP Scanner"
-        subtitle="กรุณากรอกรหัสผ่านผู้ดูแลระบบก่อนออกไปติดตั้งอัปเดต"
+        subtitle={
+          updatePinConfigured
+            ? "กรุณากรอก PIN 6 ตัวก่อนออกไปติดตั้งอัปเดต"
+            : "กรุณากรอกรหัสผ่านผู้ดูแลระบบก่อนออกไปติดตั้งอัปเดต"
+        }
+        helperText={!updatePinConfigured ? "ยังไม่ได้ตั้ง PIN ให้ใช้รหัสเดิมก่อน" : undefined}
         password={updatePassword}
         error={updatePasswordError}
         confirmLabel="อัปเดต"
+        placeholder={updatePinConfigured ? "PIN 6 ตัว" : "รหัสผ่าน"}
+        keyboardType={updatePinConfigured ? "number-pad" : "default"}
+        maxLength={updatePinConfigured ? 6 : undefined}
         onChangePassword={(value) => {
-          setUpdatePassword(value);
+          setUpdatePassword(updatePinConfigured ? sanitizeKioskPinInput(value) : value);
           setUpdatePasswordError("");
         }}
         onCancel={cancelRequiredUpdatePassword}

@@ -10,13 +10,24 @@ function makeKiosk(overrides: Partial<jest.Mocked<KioskControls>> = {}): jest.Mo
 }
 
 describe("startKioskWhenNeeded", () => {
-  it("ไม่เรียก startKiosk ซ้ำเมื่อเครื่องอยู่ใน kiosk mode แล้ว", async () => {
+  it("refresh kiosk policy แม้เครื่องอยู่ใน kiosk mode แล้ว", async () => {
     const kiosk = makeKiosk({ isInKioskMode: jest.fn(async () => true) });
 
     await expect(startKioskWhenNeeded(kiosk)).resolves.toBe(true);
 
-    expect(kiosk.startKiosk).not.toHaveBeenCalled();
-    expect(kiosk.isDeviceOwner).not.toHaveBeenCalled();
+    expect(kiosk.isDeviceOwner).toHaveBeenCalledTimes(1);
+    expect(kiosk.startKiosk).toHaveBeenCalledTimes(1);
+  });
+
+  it("คืน true ถ้า locked อยู่แล้วแต่ refresh policy ไม่สำเร็จ", async () => {
+    const kiosk = makeKiosk({
+      isInKioskMode: jest.fn(async () => true),
+      startKiosk: jest.fn(async () => false),
+    });
+
+    await expect(startKioskWhenNeeded(kiosk)).resolves.toBe(true);
+
+    expect(kiosk.startKiosk).toHaveBeenCalledTimes(1);
   });
 
   it("ไม่เรียก screen pinning fallback ถ้าแอปไม่ใช่ Device Owner", async () => {

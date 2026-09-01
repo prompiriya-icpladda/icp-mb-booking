@@ -1,4 +1,4 @@
-import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, checkinResultPresentation, scanResultPrimaryAction, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames } from "./api";
+import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, scannerPostCheckinAction, checkinResultPresentation, scanResultPrimaryAction, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames } from "./api";
 
 describe("VISITOR_TYPE_OPTIONS", () => {
   it("does not offer rider for new walk-in registrations", () => {
@@ -327,6 +327,44 @@ describe("shouldRouteToCheckout", () => {
   });
   it("returns false for an empty result", () => {
     expect(shouldRouteToCheckout({})).toBe(false);
+  });
+});
+
+describe("scannerPostCheckinAction", () => {
+  it("auto-checks out a long-term QR that is already on site", () => {
+    expect(
+      scannerPostCheckinAction({
+        success: true,
+        qrMode: "long-term",
+        alreadyCheckedIn: true,
+        canCheckout: true,
+        completedAt: null,
+      }),
+    ).toBe("checkout");
+  });
+
+  it("shows the normal result on the first long-term scan-in", () => {
+    expect(
+      scannerPostCheckinAction({
+        success: true,
+        qrMode: "long-term",
+        alreadyCheckedIn: false,
+        canCheckout: true,
+        completedAt: null,
+      }),
+    ).toBe("result");
+  });
+
+  it("shows the normal result after a completion scan already checked out", () => {
+    expect(
+      scannerPostCheckinAction({
+        success: true,
+        qrMode: "long-term",
+        alreadyCheckedIn: true,
+        canCheckout: true,
+        completedAt: "2026-08-30T04:00:00Z",
+      }),
+    ).toBe("result");
   });
 });
 
