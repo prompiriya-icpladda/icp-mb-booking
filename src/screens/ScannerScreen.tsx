@@ -185,6 +185,9 @@ export default function ScannerScreen({
                 <InfoRow label="มาพบ" value={result.data.createdByName} />
                 <InfoRow label="วันที่" value={scanResultDateText(result.data)} />
                 <InfoRow label="จุดประสงค์" value={result.data.purpose} />
+                {(result.data.entryStatus === "rejected" || result.data.entryRejectedAt) && (
+                  <InfoRow label="เหตุผล" value={result.data.entryRejectReason} danger />
+                )}
                 {result.data.hasVehicle && result.data.licensePlate && (
                   <InfoRow label="ทะเบียน" value={result.data.licensePlate} />
                 )}
@@ -203,11 +206,11 @@ export default function ScannerScreen({
   );
 }
 
-function InfoRow({ label, value }: { label: string; value?: string }) {
+function InfoRow({ label, value, danger = false }: { label: string; value?: string; danger?: boolean }) {
   return (
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value || "-"}</Text>
+      <Text style={[styles.infoValue, danger && styles.infoValueDanger]}>{value || "-"}</Text>
     </View>
   );
 }
@@ -282,5 +285,6 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: "row", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
   infoLabel: { flex: 2, color: "#6b7280", fontSize: 13 },
   infoValue: { flex: 3, color: "#111827", fontSize: 13, fontWeight: "500" },
+  infoValueDanger: { color: "#dc2626" },
   errorMsg: { color: "#dc2626", fontSize: 13, marginBottom: 8, textAlign: "center" },
 });

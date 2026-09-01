@@ -1,4 +1,4 @@
-import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, scannerPostCheckinAction, checkinResultPresentation, scanResultPrimaryAction, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames } from "./api";
+import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, scannerPostCheckinAction, checkinResultPresentation, scanResultPrimaryAction, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames, canShowWalkInQrForPhoto, visitorAppointmentQrImageUrl } from "./api";
 
 describe("VISITOR_TYPE_OPTIONS", () => {
   it("does not offer rider for new walk-in registrations", () => {
@@ -131,6 +131,28 @@ describe("longTermStatus", () => {
 });
 
 describe("normalStatus", () => {
+  it("returns 'approval-requested' while waiting for host permission", () => {
+    expect(
+      normalStatus({
+        checkedInAt: null,
+        entryApprovalRequestedAt: "2026-09-01T02:00:00Z",
+        entryApprovedAt: null,
+        entryRejectedAt: null,
+        completedAt: null,
+      }),
+    ).toBe("approval-requested");
+  });
+
+  it("returns 'rejected' when host does not allow entry", () => {
+    expect(
+      normalStatus({
+        checkedInAt: null,
+        entryRejectedAt: "2026-09-01T02:10:00Z",
+        completedAt: null,
+      }),
+    ).toBe("rejected");
+  });
+
   it("returns 'pending' when never checked in", () => {
     expect(normalStatus({ checkedInAt: null, completedAt: null })).toBe("pending");
   });
@@ -369,6 +391,26 @@ describe("scannerPostCheckinAction", () => {
 });
 
 describe("checkinResultPresentation", () => {
+  it("shows waiting for permission after first QR scan", () => {
+    expect(
+      checkinResultPresentation({
+        success: true,
+        entryStatus: "approval-requested",
+        entryApprovalRequestedAt: "2026-09-01T02:00:00Z",
+      }),
+    ).toEqual({ icon: "⏳", title: "รออนุญาตให้เข้า", color: "#d97706" });
+  });
+
+  it("shows rejected entry with red state", () => {
+    expect(
+      checkinResultPresentation({
+        success: true,
+        entryStatus: "rejected",
+        entryRejectReason: "เอกสารไม่ครบ",
+      }),
+    ).toEqual({ icon: "⛔", title: "ไม่อนุญาตให้เข้า", color: "#dc2626" });
+  });
+
   it("shows a successful completion when AP scanner scans after host requested completion", () => {
     expect(
       checkinResultPresentation({
@@ -377,6 +419,40 @@ describe("checkinResultPresentation", () => {
         completedAt: "2026-08-07T04:00:00Z",
       }),
     ).toEqual({ icon: "✅", title: "เสร็จสิ้นสำเร็จ", color: "#16a34a" });
+  });
+});
+
+describe("canShowWalkInQrForPhoto", () => {
+  it("allows QR photo only after walk-in entry is approved", () => {
+    expect(
+      canShowWalkInQrForPhoto({
+        source: "walk-in",
+        qrMode: "single-use",
+        checkedInAt: "2026-09-01T02:10:00Z",
+        entryApprovedAt: "2026-09-01T02:10:00Z",
+        completedAt: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not allow QR photo while still waiting for approval", () => {
+    expect(
+      canShowWalkInQrForPhoto({
+        source: "walk-in",
+        qrMode: "single-use",
+        checkedInAt: null,
+        entryApprovalRequestedAt: "2026-09-01T02:00:00Z",
+        completedAt: null,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("visitorAppointmentQrImageUrl", () => {
+  it("points to the visitor QR PNG endpoint", () => {
+    expect(visitorAppointmentQrImageUrl("visitor1")).toBe(
+      "https://app-plant.icpladda.com/ICPBooking/api/visitor-appointments/visitor1/qr",
+    );
   });
 });
 

@@ -33,6 +33,11 @@ export async function registerMobilePushToken(
 export interface CheckinResult {
   success?: boolean;
   alreadyCheckedIn?: boolean;
+  entryStatus?: "pending" | "approval-requested" | "approved" | "rejected";
+  entryApprovalRequestedAt?: string | null;
+  entryApprovedAt?: string | null;
+  entryRejectedAt?: string | null;
+  entryRejectReason?: string;
   visitorName?: string;
   visitorType?: string;
   visitorTypeValue?: VisitorType;
@@ -78,6 +83,10 @@ export async function checkinAppointment(id: string): Promise<CheckinResult> {
   return res.json();
 }
 
+export function visitorAppointmentQrImageUrl(id: string): string {
+  return `${API_URL}/visitor-appointments/${encodeURIComponent(id)}/qr`;
+}
+
 // สแกนซ้ำรายการเดิมที่ยัง "มาแล้ว" (ยังเช็คเอาท์ได้) → ต้องทำขั้นตอนออกต่อ
 export function shouldRouteToCheckout(res: CheckinResult): boolean {
   return !!(res.success && res.alreadyCheckedIn && res.canCheckout && !res.completedAt);
@@ -94,6 +103,12 @@ export function checkinResultPresentation(res: CheckinResult): {
   title: string;
   color: string;
 } {
+  if (res.entryStatus === "rejected" || res.entryRejectedAt) {
+    return { icon: "⛔", title: "ไม่อนุญาตให้เข้า", color: "#dc2626" };
+  }
+  if (res.entryStatus === "approval-requested" || res.entryApprovalRequestedAt) {
+    return { icon: "⏳", title: "รออนุญาตให้เข้า", color: "#d97706" };
+  }
   if (res.completedAt) {
     return { icon: "✅", title: "เสร็จสิ้นสำเร็จ", color: "#16a34a" };
   }
@@ -144,34 +159,53 @@ export interface TodayAppointment {
   visitorCount: number;
   createdByName: string;
   createdAt?: string;
+  source?: "advance" | "walk-in";
   qrMode?: VisitorQrMode;
   completedAt?: string | null;
+  entryApprovalRequestedAt?: string | null;
+  entryApprovedAt?: string | null;
+  entryRejectedAt?: string | null;
+  entryRejectReason?: string;
   visitorType?: VisitorType;
 }
 
-export type LongTermStatus = "registered" | "arrived" | "completion-requested" | "checked-out";
+export type LongTermStatus = "registered" | "approval-requested" | "rejected" | "arrived" | "completion-requested" | "checked-out";
 
 // อนุมานสถานะ long-term จาก timestamp ที่ server คืนมา (completedAt ชนะ checkedInAt)
 export function longTermStatus(
-  a: Pick<TodayAppointment, "checkedInAt" | "completionRequestedAt" | "completedAt">,
+  a: Pick<TodayAppointment, "checkedInAt" | "entryApprovalRequestedAt" | "entryApprovedAt" | "entryRejectedAt" | "completionRequestedAt" | "completedAt">,
 ): LongTermStatus {
   if (a.completedAt) return "checked-out";
   if (a.completionRequestedAt) return "completion-requested";
+  if (a.entryRejectedAt) return "rejected";
+  if (!a.checkedInAt && a.entryApprovalRequestedAt) return "approval-requested";
   if (a.checkedInAt) return "arrived";
   return "registered";
 }
 
-export type NormalStatus = "pending" | "checked-in" | "completion-requested" | "completed";
+export type NormalStatus = "pending" | "approval-requested" | "rejected" | "checked-in" | "completion-requested" | "completed";
 
 // อนุมานสถานะนัดหมายปกติ (single-use) — completedAt มาจาก host กด "เสร็จสิ้น" ใน LINE
 // (completedAt ชนะ checkedInAt เผื่อกรณีไม่ได้สแกนเช็คอินแต่ host ปิดงานแล้ว)
 export function normalStatus(
-  a: Pick<TodayAppointment, "checkedInAt" | "completionRequestedAt" | "completedAt">,
+  a: Pick<TodayAppointment, "checkedInAt" | "entryApprovalRequestedAt" | "entryApprovedAt" | "entryRejectedAt" | "completionRequestedAt" | "completedAt">,
 ): NormalStatus {
   if (a.completedAt) return "completed";
   if (a.completionRequestedAt) return "completion-requested";
+  if (a.entryRejectedAt) return "rejected";
+  if (!a.checkedInAt && a.entryApprovalRequestedAt) return "approval-requested";
   if (a.checkedInAt) return "checked-in";
   return "pending";
+}
+
+export function canShowWalkInQrForPhoto(
+  a: Pick<TodayAppointment, "source" | "qrMode" | "checkedInAt" | "entryApprovalRequestedAt" | "entryApprovedAt" | "completedAt">,
+): boolean {
+  return a.source === "walk-in" &&
+    a.qrMode !== "long-term" &&
+    !!a.checkedInAt &&
+    !!a.entryApprovedAt &&
+    !a.completedAt;
 }
 
 // เลือกเช็คเอาท์ในแอป: คง rider/แม่ค้าที่มาแล้วแบบเดิม + เพิ่ม QR ระยะยาวที่ "รอสแกนเสร็จสิ้น"
