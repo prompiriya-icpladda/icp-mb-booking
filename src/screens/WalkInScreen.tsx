@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -27,6 +28,7 @@ import {
   visitorTypeNeedsCompany,
   visitorTypeNeedsHost,
   VisitorType,
+  visitorAppointmentQrImageUrl,
 } from "../services/api";
 import { readThaiIdCardName } from "../services/thaiIdCard";
 import {
@@ -42,6 +44,15 @@ import type {
   PdpaSignatureStroke,
 } from "../utils/pdpaConsent";
 import { confirmWalkInSubmit } from "../utils/walkInConfirm";
+import {
+  WALK_IN_QR_MODAL_AUTO_CLOSE_MS,
+  formatWalkInDepartmentTargetName,
+  isOperationDepartment,
+  shouldNotifyDepartmentRelatedEmployees,
+  walkInDepartmentOptionsFromEmployees,
+  walkInQrModalFromResult,
+  type WalkInQrModalState,
+} from "../utils/walkInSubmitUi";
 
 const MIN_VEHICLE_COUNT = 1;
 const SIGNATURE_POINT_MIN_DISTANCE = 2;
@@ -64,6 +75,7 @@ export default function WalkInScreen() {
   const [hostQuery, setHostQuery] = useState("");
   const [hostResults, setHostResults] = useState<HrEmployee[]>([]);
   const [selectedHost, setSelectedHost] = useState<HrEmployee | null>(null);
+  const [selectedDepartment, setSelectedDepartment] = useState("");
   const [includeDepartmentRelatedEmployees, setIncludeDepartmentRelatedEmployees] =
     useState(true);
   const [pdpaModalOpen, setPdpaModalOpen] = useState(false);
@@ -88,7 +100,9 @@ export default function WalkInScreen() {
     type: "ok" | "error";
     text: string;
   } | null>(null);
+  const [qrModal, setQrModal] = useState<WalkInQrModalState | null>(null);
   const cameraRef = useRef<CameraView>(null);
+  const qrAutoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const signatureBoxSizeRef = useRef(signatureBoxSize);
   const pdpaScrollMetricsRef = useRef<PdpaScrollMetrics>({
     layoutHeight: 0,
@@ -99,6 +113,13 @@ export default function WalkInScreen() {
   // แม่ค้ามาขายของ ไม่ต้องเลือกผู้ที่ต้องการพบ
   const hostRequired = visitorTypeNeedsHost(visitorType);
   const companyVisible = visitorTypeNeedsCompany(visitorType);
+  const selectedDepartmentName = selectedDepartment.trim();
+  const selectedTargetDepartment = selectedHost?.department || selectedDepartmentName;
+  const selectedTargetIsOperation = isOperationDepartment(selectedTargetDepartment);
+  const hasSelectedDepartmentTarget = !!selectedDepartmentName;
+  const canToggleDepartmentRelatedEmployees =
+    hostRequired && !!selectedHost && !selectedTargetIsOperation;
+  const hostDepartmentOptions = walkInDepartmentOptionsFromEmployees(hostResults);
   const companyQuery = normalizeText(companyName);
   const companySuggestions = recentCompanyNames
     .filter((name) => !companyQuery || normalizeText(name).includes(companyQuery))
@@ -125,7 +146,7 @@ export default function WalkInScreen() {
 
   useEffect(() => {
     const query = hostQuery.trim();
-    if (query.length < 2 || selectedHost) {
+    if (query.length < 2 || selectedHost || selectedDepartmentName) {
       setHostResults([]);
       setHostError(null);
       return;
@@ -158,7 +179,7 @@ export default function WalkInScreen() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [hostQuery, selectedHost]);
+  }, [hostQuery, selectedHost, selectedDepartmentName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -189,6 +210,32 @@ export default function WalkInScreen() {
     if (!companyVisible) setCompanyDropdownOpen(false);
   }, [companyVisible]);
 
+  useEffect(() => {
+    return () => {
+      if (qrAutoCloseTimerRef.current) clearTimeout(qrAutoCloseTimerRef.current);
+    };
+  }, []);
+
+  function clearQrAutoCloseTimer() {
+    if (!qrAutoCloseTimerRef.current) return;
+    clearTimeout(qrAutoCloseTimerRef.current);
+    qrAutoCloseTimerRef.current = null;
+  }
+
+  function closeQrModal() {
+    clearQrAutoCloseTimer();
+    setQrModal(null);
+  }
+
+  function openQrModal(nextModal: WalkInQrModalState) {
+    clearQrAutoCloseTimer();
+    setQrModal(nextModal);
+    qrAutoCloseTimerRef.current = setTimeout(() => {
+      qrAutoCloseTimerRef.current = null;
+      setQrModal(null);
+    }, WALK_IN_QR_MODAL_AUTO_CLOSE_MS);
+  }
+
   function resetForm() {
     setVisitorName("");
     setCompanyName("");
@@ -198,6 +245,7 @@ export default function WalkInScreen() {
     setVisitorCount(1);
     setHostQuery("");
     setSelectedHost(null);
+    setSelectedDepartment("");
     setHostResults([]);
     setIncludeDepartmentRelatedEmployees(true);
     setPdpaModalOpen(false);
@@ -402,13 +450,24 @@ export default function WalkInScreen() {
 
   function pickHost(employee: HrEmployee) {
     setSelectedHost(employee);
+    setSelectedDepartment("");
     setHostQuery(formatEmployeeName(employee));
+    setHostResults([]);
+    setHostError(null);
+  }
+
+  function pickDepartment(department: string) {
+    const label = department.trim();
+    setSelectedHost(null);
+    setSelectedDepartment(label);
+    setHostQuery(formatWalkInDepartmentTargetName(label));
     setHostResults([]);
     setHostError(null);
   }
 
   function clearHost() {
     setSelectedHost(null);
+    setSelectedDepartment("");
     setHostQuery("");
     setHostResults([]);
     setHostError(null);
@@ -439,10 +498,10 @@ export default function WalkInScreen() {
       .filter(Boolean);
   }
 
-  function validate(host: HrEmployee | null) {
+  function validate(host: HrEmployee | null, departmentTarget: string) {
     if (!visitorName.trim()) return "กรุณากรอกชื่อผู้มาติดต่อ";
     if (!pdpaReady) return pdpaMissingMessage();
-    if (hostRequired && !host) return "กรุณาเลือกผู้ที่ต้องการพบจาก HR";
+    if (hostRequired && !host && !departmentTarget) return "กรุณาเลือกผู้ที่ต้องการพบจาก HR";
     if (companyVisible && !companyName.trim()) return "กรุณากรอกชื่อบริษัท";
     if (hasVehicle) {
       if (vehicleCount < 1) return "กรุณาระบุจำนวนรถ";
@@ -463,46 +522,75 @@ export default function WalkInScreen() {
     if (submitting) return;
 
     let host = selectedHost;
-    if (hostRequired && !host && hostQuery.trim().length >= 2) {
+    let departmentTarget = selectedDepartmentName;
+    if (hostRequired && !host && !departmentTarget && hostQuery.trim().length >= 2) {
       host = await resolveHostSelection(hostQuery);
       if (host) {
         setSelectedHost(host);
+        setSelectedDepartment("");
         setHostQuery(formatEmployeeName(host));
         setHostResults([]);
         setHostError(null);
+      } else {
+        const resolvedDepartment = await resolveDepartmentSelection(hostQuery);
+        if (resolvedDepartment) {
+          departmentTarget = resolvedDepartment;
+          setSelectedDepartment(resolvedDepartment);
+          setHostQuery(formatWalkInDepartmentTargetName(resolvedDepartment));
+          setHostResults([]);
+          setHostError(null);
+        }
       }
     }
-    if (!hostRequired) host = null;
+    if (!hostRequired) {
+      host = null;
+      departmentTarget = "";
+    }
 
-    const validationError = validate(host);
+    const validationError = validate(host, departmentTarget);
     if (validationError) {
       setMessage({ type: "error", text: validationError });
       Alert.alert("ข้อมูลไม่ครบ", validationError);
       if (!pdpaReady && validationError === pdpaMissingMessage()) openPdpaModal();
       return;
     }
-    if (hostRequired && !host) return;
+    if (hostRequired && !host && !departmentTarget) return;
 
     const plates = hasVehicle ? activeLicensePlates() : [];
     const normalizedCompanyName = companyVisible ? companyName.trim() : "";
+    const targetName = departmentTarget
+      ? formatWalkInDepartmentTargetName(departmentTarget)
+      : host?.name ?? "";
+    const notifyDepartmentRelated = departmentTarget
+      ? shouldNotifyDepartmentRelatedEmployees({
+          hostRequired,
+          department: departmentTarget,
+          selected: true,
+        })
+      : shouldNotifyDepartmentRelatedEmployees({
+          hostRequired,
+          hostDepartment: host?.department,
+          selected: includeDepartmentRelatedEmployees,
+        });
 
     confirmWalkInSubmit(
       {
         visitorName: visitorName.trim(),
         visitorTypeLabel: visitorTypeConfirmLabel(),
         companyName: normalizedCompanyName,
-        hostName: host?.name ?? "",
-        notifyDepartmentRelated: hostRequired && includeDepartmentRelatedEmployees,
+        hostName: targetName,
+        notifyDepartmentRelated,
         visitorCount,
         licensePlates: plates,
       },
       Alert.alert,
-      () => { void submitConfirmed(host, plates, normalizedCompanyName); },
+      () => { void submitConfirmed(host, departmentTarget, plates, normalizedCompanyName); },
     );
   }
 
   async function submitConfirmed(
     host: HrEmployee | null,
+    departmentTarget: string,
     plates: string[],
     normalizedCompanyName: string,
   ) {
@@ -510,19 +598,35 @@ export default function WalkInScreen() {
     setSubmitting(true);
     setMessage(null);
     try {
+      const normalizedDepartmentTarget = departmentTarget.trim();
+      const targetName = normalizedDepartmentTarget
+        ? formatWalkInDepartmentTargetName(normalizedDepartmentTarget)
+        : host?.name ?? "";
+      const notifyDepartmentRelated = normalizedDepartmentTarget
+        ? shouldNotifyDepartmentRelatedEmployees({
+            hostRequired,
+            department: normalizedDepartmentTarget,
+            selected: true,
+          })
+        : shouldNotifyDepartmentRelatedEmployees({
+            hostRequired,
+            hostDepartment: host?.department,
+            selected: includeDepartmentRelatedEmployees,
+          });
       const hostUserId = host
         ? host.userId ?? host.employeeId ?? host.employeeCode
         : "";
-      await createWalkInVisit({
+      const result = await createWalkInVisit({
         visitorName: visitorName.trim(),
+        targetDepartment: normalizedDepartmentTarget || undefined,
         hostEmployeeCode: host?.employeeCode ?? "",
-        hostName: host?.name ?? "",
+        hostName: targetName,
         hostNickname: host?.nickname,
         visittingUserId: hostUserId,
-        visittingUserName: host?.name ?? "",
+        visittingUserName: targetName,
         visittingUserNickname: host?.nickname,
         visitingUserId: hostUserId,
-        visitingUserName: host?.name ?? "",
+        visitingUserName: targetName,
         visitingUserNickname: host?.nickname,
         companyName: normalizedCompanyName,
         purpose: purpose.trim(),
@@ -532,18 +636,21 @@ export default function WalkInScreen() {
         vehicleCount: hasVehicle ? vehicleCount : 0,
         licensePlate: plates[0],
         licensePlates: plates,
-        includeDepartmentRelatedEmployees: hostRequired
-          ? includeDepartmentRelatedEmployees
-          : false,
+        includeDepartmentRelatedEmployees: notifyDepartmentRelated,
         pdpaConsentAccepted: true,
         pdpaConsentedAt,
         pdpaConsentVersion: PDPA_CONSENT_VERSION,
         pdpaSignature,
         source: "mobile-walk-in",
       });
+      const nextQrModal = walkInQrModalFromResult(result, visitorName.trim());
       rememberRecentCompanyName(normalizedCompanyName);
       resetForm();
-      setMessage({ type: "ok", text: "บันทึกข้อมูลเรียบร้อย" });
+      setMessage({
+        type: "ok",
+        text: hostRequired ? "บันทึกข้อมูลเรียบร้อย รออนุมัติ" : "บันทึกข้อมูลเรียบร้อย",
+      });
+      if (nextQrModal) openQrModal(nextQrModal);
     } catch (e) {
       const errorMessage =
         e instanceof Error ? e.message : "ไม่สามารถบันทึกข้อมูลได้";
@@ -664,12 +771,13 @@ export default function WalkInScreen() {
                 value={hostQuery}
                 onChangeText={(v) => {
                   setSelectedHost(null);
+                  setSelectedDepartment("");
                   setHostQuery(v);
                 }}
                 placeholder="ค้นหาชื่อ รหัสพนักงาน หรือแผนก"
                 placeholderTextColor="#9ca3af"
               />
-              {selectedHost && (
+              {(selectedHost || selectedDepartmentName) && (
                 <TouchableOpacity style={styles.clearBtn} onPress={clearHost}>
                   <Text style={styles.clearText}>ล้าง</Text>
                 </TouchableOpacity>
@@ -681,32 +789,51 @@ export default function WalkInScreen() {
             {!!hostError && !hostLoading && (
               <Text style={styles.hostError}>{hostError}</Text>
             )}
-            <TouchableOpacity
-              style={styles.checkboxRow}
-              onPress={() =>
-                setIncludeDepartmentRelatedEmployees((current) => !current)
-              }
-              activeOpacity={0.8}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: includeDepartmentRelatedEmployees }}
-            >
-              <View
-                style={[
-                  styles.checkboxBox,
-                  includeDepartmentRelatedEmployees && styles.checkboxBoxActive,
-                ]}
+            {hasSelectedDepartmentTarget ? (
+              <Text style={styles.helperText}>
+                ระบบจะแจ้งพนักงานรายเดือนทุกคนในแผนกนี้
+              </Text>
+            ) : canToggleDepartmentRelatedEmployees ? (
+              <TouchableOpacity
+                style={styles.checkboxRow}
+                onPress={() =>
+                  setIncludeDepartmentRelatedEmployees((current) => !current)
+                }
+                activeOpacity={0.8}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: includeDepartmentRelatedEmployees }}
               >
-                {includeDepartmentRelatedEmployees && (
-                  <Text style={styles.checkboxMark}>✓</Text>
-                )}
-              </View>
-              <View style={styles.checkboxTextWrap}>
-                <Text style={styles.checkboxText}>
-                  เพิ่มบุคคลที่เกี่ยวข้องในแผนกเดียวกัน
-                </Text>
-                <Text style={styles.checkboxSubText}>เฉพาะพนักงานรายเดือน</Text>
-              </View>
-            </TouchableOpacity>
+                <View
+                  style={[
+                    styles.checkboxBox,
+                    includeDepartmentRelatedEmployees && styles.checkboxBoxActive,
+                  ]}
+                >
+                  {includeDepartmentRelatedEmployees && (
+                    <Text style={styles.checkboxMark}>✓</Text>
+                  )}
+                </View>
+                <View style={styles.checkboxTextWrap}>
+                  <Text style={styles.checkboxText}>
+                    เพิ่มบุคคลที่เกี่ยวข้องในแผนกเดียวกัน
+                  </Text>
+                  <Text style={styles.checkboxSubText}>เฉพาะพนักงานรายเดือน</Text>
+                </View>
+              </TouchableOpacity>
+            ) : selectedTargetIsOperation ? (
+              <Text style={styles.helperText}>แผนก Operation ไม่ส่งแจ้งเตือนเพิ่มให้ทั้งแผนก</Text>
+            ) : null}
+            {hostDepartmentOptions.map((department) => (
+              <TouchableOpacity
+                key={`department-${department}`}
+                style={[styles.employeeItem, styles.departmentItem]}
+                onPress={() => pickDepartment(department)}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.employeeName}>แผนก {department}</Text>
+                <Text style={styles.employeeMeta}>แจ้งพนักงานรายเดือนทุกคนในแผนก</Text>
+              </TouchableOpacity>
+            ))}
             {hostResults.map((item) => (
               <TouchableOpacity
                 key={item.employeeCode}
@@ -980,6 +1107,35 @@ export default function WalkInScreen() {
       </Modal>
 
       <Modal
+        visible={!!qrModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeQrModal}
+      >
+        <View style={styles.qrModalBackdrop}>
+          <View style={styles.qrModalCard}>
+            <Text style={styles.qrModalTitle}>QR Code สำหรับเช็คอิน</Text>
+            <Text style={styles.qrModalSubTitle}>
+              ให้ {qrModal?.visitorName ?? "ผู้มาติดต่อ"} แสดง QR นี้ที่จุดรักษาความปลอดภัย
+            </Text>
+            {qrModal && (
+              <View style={styles.qrBox}>
+                <Image
+                  source={{ uri: visitorAppointmentQrImageUrl(qrModal.id) }}
+                  style={styles.qrImage}
+                  resizeMode="contain"
+                />
+              </View>
+            )}
+            <Text style={styles.qrHint}>หน้าต่างนี้จะปิดเองใน 30 วินาที</Text>
+            <TouchableOpacity style={styles.qrDoneBtn} onPress={closeQrModal} activeOpacity={0.85}>
+              <Text style={styles.qrDoneText}>เสร็จสิ้น</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={pdpaModalOpen}
         animationType="slide"
         transparent
@@ -1199,6 +1355,24 @@ async function resolveHostSelection(query: string) {
   }
 }
 
+async function resolveDepartmentSelection(query: string) {
+  try {
+    const results = await searchHrEmployees(query);
+    const options = walkInDepartmentOptionsFromEmployees(results);
+    if (options.length === 0) return "";
+    const normalizedQuery = normalizeText(
+      query.replace(/^(แผนก|ฝ่าย|dept\.?|department)\s*/i, ""),
+    );
+    const exactMatches = options.filter(
+      (department) => normalizeText(department) === normalizedQuery,
+    );
+    if (exactMatches.length === 1) return exactMatches[0];
+    return options.length === 1 ? options[0] : "";
+  } catch {
+    return "";
+  }
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
   header: {
@@ -1306,6 +1480,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 10,
   },
+  departmentItem: { borderColor: "#bbf7d0", backgroundColor: "#f0fdf4" },
   companyDropdown: { gap: 6 },
   companyItem: {
     backgroundColor: "#fff",
@@ -1413,6 +1588,38 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cameraCaptureText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  qrModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(17,24,39,0.55)",
+    padding: 20,
+    justifyContent: "center",
+  },
+  qrModalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 18,
+    alignItems: "center",
+    gap: 12,
+  },
+  qrModalTitle: { color: "#111827", fontSize: 18, fontWeight: "800" },
+  qrModalSubTitle: { color: "#4b5563", fontSize: 13, lineHeight: 20, textAlign: "center" },
+  qrBox: {
+    borderWidth: 2,
+    borderColor: "#e5e7eb",
+    borderRadius: 14,
+    padding: 10,
+    backgroundColor: "#fff",
+  },
+  qrImage: { width: 220, height: 220 },
+  qrHint: { color: "#6b7280", fontSize: 12, textAlign: "center" },
+  qrDoneBtn: {
+    alignSelf: "stretch",
+    backgroundColor: "#16a34a",
+    borderRadius: 10,
+    paddingVertical: 13,
+    alignItems: "center",
+  },
+  qrDoneText: { color: "#fff", fontSize: 15, fontWeight: "800" },
   pdpaModalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(17,24,39,0.55)",

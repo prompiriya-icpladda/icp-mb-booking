@@ -8,12 +8,12 @@ import {
   View,
 } from "react-native";
 import { AppText as Text } from "../theme/typography";
-import { checkoutAppointment, TodayAppointment, VisitorType } from "../services/api";
+import { checkoutAppointment, TodayAppointment, VISITOR_TYPE_OPTIONS, VisitorType } from "../services/api";
 
 function visitorTypeLabel(t?: VisitorType): string {
   if (t === "rider") return "รายการเดิม";
   if (t === "merchant") return "แม่ค้า";
-  return t ?? "-";
+  return VISITOR_TYPE_OPTIONS.find((option) => option.value === t)?.label ?? t ?? "-";
 }
 
 function formatCheckedInAt(iso: string | null): string {
@@ -38,6 +38,11 @@ export default function LongTermDetailScreen({
   onCheckedOut: () => void;
 }) {
   const [checkingOut, setCheckingOut] = useState(false);
+  const isLongTerm = appointment.qrMode === "long-term";
+  const scheduleText = isLongTerm
+    ? appointment.expiryDate || "ไม่จำกัด"
+    : [appointment.appointmentDate, appointment.appointmentTime].filter(Boolean).join(" ");
+  const statusText = appointment.completedAt ? "เช็คเอาท์แล้ว" : "มาแล้ว";
 
   async function handleCheckout() {
     if (checkingOut) return;
@@ -70,7 +75,7 @@ export default function LongTermDetailScreen({
 
       <ScrollView contentContainerStyle={styles.body}>
         <View style={styles.statusBadge}>
-          <Text style={styles.statusText}>มาแล้ว</Text>
+          <Text style={styles.statusText}>{statusText}</Text>
         </View>
 
         <Text style={styles.name}>{appointment.visitorName}</Text>
@@ -80,7 +85,7 @@ export default function LongTermDetailScreen({
 
         <View style={styles.infoCard}>
           <InfoRow label="ประเภท" value={visitorTypeLabel(appointment.visitorType)} />
-          <InfoRow label="ถึงวันที่" value={appointment.expiryDate || "ไม่จำกัด"} />
+          <InfoRow label={isLongTerm ? "ถึงวันที่" : "วันที่"} value={scheduleText} />
           <InfoRow label="จุดประสงค์" value={appointment.purpose} />
           {appointment.visitorCount > 1 ? (
             <InfoRow label="จำนวน" value={`${appointment.visitorCount} คน`} />
@@ -93,20 +98,22 @@ export default function LongTermDetailScreen({
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.checkoutBtn, checkingOut && styles.btnDisabled]}
-          onPress={handleCheckout}
-          disabled={checkingOut}
-          activeOpacity={0.85}
-        >
-          {checkingOut ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.checkoutText}>เช็คเอาท์</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      {!appointment.completedAt && (
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={[styles.checkoutBtn, checkingOut && styles.btnDisabled]}
+            onPress={handleCheckout}
+            disabled={checkingOut}
+            activeOpacity={0.85}
+          >
+            {checkingOut ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.checkoutText}>เช็คเอาท์</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }

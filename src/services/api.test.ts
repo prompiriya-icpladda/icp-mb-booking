@@ -1,4 +1,4 @@
-import { visitorTypeNeedsCompany, longTermStatus, normalStatus, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, scannerPostCheckinAction, checkinResultPresentation, scanResultPrimaryAction, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames, canShowWalkInQrForPhoto, visitorAppointmentQrImageUrl } from "./api";
+import { visitorTypeNeedsCompany, longTermStatus, normalStatus, normalStatusLabel, longTermStatusLabel, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, scannerPostCheckinAction, checkinResultPresentation, scanResultPrimaryAction, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames, canShowWalkInQrForPhoto, visitorAppointmentQrImageUrl } from "./api";
 
 describe("VISITOR_TYPE_OPTIONS", () => {
   it("does not offer rider for new walk-in registrations", () => {
@@ -352,6 +352,18 @@ describe("shouldRouteToCheckout", () => {
   });
 });
 
+describe("visitor appointment status labels", () => {
+  it("shows walk-in approval requests as waiting for approval, not completed", () => {
+    expect(normalStatusLabel("approval-requested")).toBe("รออนุมัติ");
+    expect(longTermStatusLabel("approval-requested")).toBe("รออนุมัติ");
+  });
+
+  it("keeps completed and rejected labels explicit", () => {
+    expect(normalStatusLabel("completed")).toBe("เสร็จสิ้น");
+    expect(normalStatusLabel("rejected")).toBe("ไม่อนุมัติ");
+  });
+});
+
 describe("scannerPostCheckinAction", () => {
   it("auto-checks out a long-term QR that is already on site", () => {
     expect(
@@ -398,7 +410,7 @@ describe("checkinResultPresentation", () => {
         entryStatus: "approval-requested",
         entryApprovalRequestedAt: "2026-09-01T02:00:00Z",
       }),
-    ).toEqual({ icon: "⏳", title: "รออนุญาตให้เข้า", color: "#d97706" });
+    ).toEqual({ icon: "⏳", title: "รออนุมัติ", color: "#d97706" });
   });
 
   it("shows rejected entry with red state", () => {
@@ -417,6 +429,19 @@ describe("checkinResultPresentation", () => {
         success: true,
         alreadyCheckedIn: true,
         completedAt: "2026-08-07T04:00:00Z",
+      }),
+    ).toEqual({ icon: "✅", title: "เสร็จสิ้นสำเร็จ", color: "#16a34a" });
+  });
+
+  it("shows completion even when entry approval timestamp remains on the record", () => {
+    expect(
+      checkinResultPresentation({
+        success: true,
+        alreadyCheckedIn: true,
+        entryStatus: "approved",
+        entryApprovalRequestedAt: "2026-09-01T02:00:00Z",
+        entryApprovedAt: "2026-09-01T02:05:00Z",
+        completedAt: "2026-09-01T03:00:00Z",
       }),
     ).toEqual({ icon: "✅", title: "เสร็จสิ้นสำเร็จ", color: "#16a34a" });
   });
@@ -610,6 +635,45 @@ describe("createWalkInVisit", () => {
     const requestInit = fetchMock.mock.calls[0]![1];
     const requestBody = JSON.parse(String(requestInit.body));
     expect(requestBody.includeDepartmentRelatedEmployees).toBe(false);
+  });
+
+  it("sends department target details for walk-in department selection", async () => {
+    const fetchMock = jest.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      text: async () => JSON.stringify({ _id: "visit-1" }),
+    }));
+    jest.spyOn(console, "log").mockImplementation(() => undefined);
+    (global as any).fetch = fetchMock;
+
+    await createWalkInVisit({
+      visitorName: "สมชาย ใจดี",
+      targetDepartment: "IT",
+      hostEmployeeCode: "",
+      hostName: "เจ้าหน้าที่แผนก IT",
+      visittingUserId: "",
+      visittingUserName: "เจ้าหน้าที่แผนก IT",
+      visitingUserId: "",
+      visitingUserName: "เจ้าหน้าที่แผนก IT",
+      companyName: "บริษัท ก",
+      hasVehicle: false,
+      source: "mobile-walk-in",
+      includeDepartmentRelatedEmployees: true,
+    });
+
+    const requestInit = fetchMock.mock.calls[0]![1];
+    const requestBody = JSON.parse(String(requestInit.body));
+    expect(requestBody).toEqual(
+      expect.objectContaining({
+        targetDepartment: "IT",
+        hostEmployeeCode: "",
+        hostName: "เจ้าหน้าที่แผนก IT",
+        visittingUserId: "",
+        visittingUserName: "เจ้าหน้าที่แผนก IT",
+        visitingUserId: "",
+        visitingUserName: "เจ้าหน้าที่แผนก IT",
+        includeDepartmentRelatedEmployees: true,
+      }),
+    );
   });
 
   it("does not send or log national ID numbers", async () => {

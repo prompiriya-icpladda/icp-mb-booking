@@ -103,14 +103,14 @@ export function checkinResultPresentation(res: CheckinResult): {
   title: string;
   color: string;
 } {
+  if (res.completedAt) {
+    return { icon: "✅", title: "เสร็จสิ้นสำเร็จ", color: "#16a34a" };
+  }
   if (res.entryStatus === "rejected" || res.entryRejectedAt) {
     return { icon: "⛔", title: "ไม่อนุญาตให้เข้า", color: "#dc2626" };
   }
   if (res.entryStatus === "approval-requested" || res.entryApprovalRequestedAt) {
-    return { icon: "⏳", title: "รออนุญาตให้เข้า", color: "#d97706" };
-  }
-  if (res.completedAt) {
-    return { icon: "✅", title: "เสร็จสิ้นสำเร็จ", color: "#16a34a" };
+    return { icon: "⏳", title: "รออนุมัติ", color: "#d97706" };
   }
   return res.alreadyCheckedIn
     ? { icon: "⚠️", title: "เช็คอินซ้ำ", color: "#d97706" }
@@ -183,6 +183,23 @@ export function longTermStatus(
   return "registered";
 }
 
+export function longTermStatusLabel(status: LongTermStatus): string {
+  switch (status) {
+    case "registered":
+      return "ลงทะเบียน";
+    case "approval-requested":
+      return "รออนุมัติ";
+    case "rejected":
+      return "ไม่อนุมัติ";
+    case "arrived":
+      return "มาแล้ว";
+    case "completion-requested":
+      return "รอสแกนเสร็จสิ้น";
+    case "checked-out":
+      return "เช็คเอาท์";
+  }
+}
+
 export type NormalStatus = "pending" | "approval-requested" | "rejected" | "checked-in" | "completion-requested" | "completed";
 
 // อนุมานสถานะนัดหมายปกติ (single-use) — completedAt มาจาก host กด "เสร็จสิ้น" ใน LINE
@@ -196,6 +213,23 @@ export function normalStatus(
   if (!a.checkedInAt && a.entryApprovalRequestedAt) return "approval-requested";
   if (a.checkedInAt) return "checked-in";
   return "pending";
+}
+
+export function normalStatusLabel(status: NormalStatus): string {
+  switch (status) {
+    case "pending":
+      return "รอเช็คอิน";
+    case "approval-requested":
+      return "รออนุมัติ";
+    case "rejected":
+      return "ไม่อนุมัติ";
+    case "checked-in":
+      return "เช็คอินแล้ว";
+    case "completion-requested":
+      return "รอสแกนเสร็จสิ้น";
+    case "completed":
+      return "เสร็จสิ้น";
+  }
 }
 
 export function canShowWalkInQrForPhoto(
@@ -521,6 +555,7 @@ export function visitorTypeNeedsCompany(visitorType: VisitorType): boolean {
 
 export interface CreateWalkInVisitPayload {
   visitorName: string;
+  targetDepartment?: string;
   hostEmployeeCode: string;
   hostName: string;
   hostNickname?: string;
@@ -618,6 +653,7 @@ export async function createWalkInVisit(
 
   console.log("createWalkInVisit payload", {
     visitorName: requestBody.visitorName,
+    targetDepartment: requestBody.targetDepartment,
     hostEmployeeCode: requestBody.hostEmployeeCode,
     hostName: requestBody.hostName,
     visittingUserId: requestBody.visittingUserId,

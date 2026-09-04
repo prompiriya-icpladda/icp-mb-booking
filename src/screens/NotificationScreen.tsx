@@ -18,8 +18,10 @@ import {
   isLongTermCheckoutable,
   isLongTermOnSite,
   longTermCardAction,
+  longTermStatusLabel,
   longTermStatus,
   LongTermStatus,
+  normalStatusLabel,
   normalStatus,
   NormalStatus,
   sortAppointmentsByLatest,
@@ -457,8 +459,8 @@ function AppointmentCard({
   const showWalkInQr = canShowWalkInQrForPhoto(item);
   const walkInQrUri = showWalkInQr ? visitorAppointmentQrImageUrl(item._id) : "";
 
-  // long-term: longTermCardAction ตัดสิน select/detail/scan; การ์ดปกติ: สแกนเหมือนเดิม
-  const wantsDetail = isLongTerm && longTermCardAction(item, selectMode) === "detail";
+  // long-term: แตะเพื่อดูรายละเอียดเมื่อเช็คเอาท์ได้; walk-in ที่อนุญาตแล้ว: เปิดรายละเอียดเพื่อเช็คเอาท์
+  const wantsDetail = (isLongTerm && longTermCardAction(item, selectMode) === "detail") || showWalkInQr;
 
   // โหมดเลือก: แตะเพื่อเลือก; rider/แม่ค้าที่มาแล้วหรือรอสแกนเสร็จสิ้น: เปิดรายละเอียด; อื่นๆ: สแกน
   const tappable = selectMode
@@ -534,7 +536,7 @@ function AppointmentCard({
         {!selectMode && tappable && (
           <View style={styles.scanHint}>
             <Text style={styles.scanHintText}>
-              {wantsDetail ? "› ดูรายละเอียด" : "📷 แตะเพื่อสแกน"}
+              {wantsDetail ? (showWalkInQr ? "› ดูรายละเอียด / เช็คเอาท์" : "› ดูรายละเอียด") : "📷 แตะเพื่อสแกน"}
             </Text>
           </View>
         )}
@@ -607,63 +609,47 @@ function Pill({ icon, text }: { icon: string; text: string }) {
 }
 
 function longTermLabel(s: LongTermStatus) {
-  return s === "registered"
-    ? "ลงทะเบียน"
-    : s === "arrived"
-      ? "มาแล้ว"
-      : s === "completion-requested"
-        ? "รอสแกนเสร็จสิ้น"
-        : "เช็คเอาท์";
+  return longTermStatusLabel(s);
 }
 
 function longTermBadgeStyle(s: LongTermStatus) {
-  return s === "registered"
-    ? styles.statusPending
-    : s === "arrived"
-      ? styles.statusChecked
-      : s === "completion-requested"
-        ? styles.statusCompletionRequested
-      : styles.statusCheckedOut;
+  if (s === "registered") return styles.statusPending;
+  if (s === "approval-requested") return styles.statusApproval;
+  if (s === "rejected") return styles.statusRejected;
+  if (s === "arrived") return styles.statusChecked;
+  if (s === "completion-requested") return styles.statusCompletionRequested;
+  return styles.statusCheckedOut;
 }
 
 function normalLabel(s: NormalStatus) {
-  return s === "pending"
-    ? "รอเช็คอิน"
-    : s === "checked-in"
-      ? "เช็คอินแล้ว"
-      : s === "completion-requested"
-        ? "รอสแกนเสร็จสิ้น"
-        : "เสร็จสิ้น";
+  return normalStatusLabel(s);
 }
 
 function normalBadgeStyle(s: NormalStatus) {
-  return s === "pending"
-    ? styles.statusPending
-    : s === "checked-in"
-      ? styles.statusChecked
-      : s === "completion-requested"
-        ? styles.statusCompletionRequested
-        : styles.statusCheckedOut;
+  if (s === "pending") return styles.statusPending;
+  if (s === "approval-requested") return styles.statusApproval;
+  if (s === "rejected") return styles.statusRejected;
+  if (s === "checked-in") return styles.statusChecked;
+  if (s === "completion-requested") return styles.statusCompletionRequested;
+  return styles.statusCheckedOut;
 }
 
 function normalTextStyle(s: NormalStatus) {
-  return s === "pending"
-    ? styles.statusPendingText
-    : s === "checked-in"
-      ? styles.statusCheckedText
-      : s === "completion-requested"
-        ? styles.statusCompletionRequestedText
-        : styles.statusCheckedOutText;
+  if (s === "pending") return styles.statusPendingText;
+  if (s === "approval-requested") return styles.statusApprovalText;
+  if (s === "rejected") return styles.statusRejectedText;
+  if (s === "checked-in") return styles.statusCheckedText;
+  if (s === "completion-requested") return styles.statusCompletionRequestedText;
+  return styles.statusCheckedOutText;
 }
 
 function longTermTextStyle(s: LongTermStatus) {
-  return s === "registered"
-    ? styles.statusPendingText
-    : s === "arrived"
-      ? styles.statusCheckedText
-      : s === "completion-requested"
-        ? styles.statusCompletionRequestedText
-      : styles.statusCheckedOutText;
+  if (s === "registered") return styles.statusPendingText;
+  if (s === "approval-requested") return styles.statusApprovalText;
+  if (s === "rejected") return styles.statusRejectedText;
+  if (s === "arrived") return styles.statusCheckedText;
+  if (s === "completion-requested") return styles.statusCompletionRequestedText;
+  return styles.statusCheckedOutText;
 }
 
 const styles = StyleSheet.create({
@@ -748,11 +734,15 @@ const styles = StyleSheet.create({
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
   statusChecked: { backgroundColor: "#dcfce7" },
   statusPending: { backgroundColor: "#f3f4f6" },
+  statusApproval: { backgroundColor: "#fef3c7" },
+  statusRejected: { backgroundColor: "#fee2e2" },
   statusCompletionRequested: { backgroundColor: "#ede9fe" },
   statusCheckedOut: { backgroundColor: "#e5e7eb" },
   statusText: { fontSize: 11, fontWeight: "600" },
   statusCheckedText: { color: "#16a34a" },
   statusPendingText: { color: "#6b7280" },
+  statusApprovalText: { color: "#d97706" },
+  statusRejectedText: { color: "#dc2626" },
   statusCompletionRequestedText: { color: "#7c3aed" },
   statusCheckedOutText: { color: "#374151" },
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
