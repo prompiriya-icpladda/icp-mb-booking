@@ -448,7 +448,7 @@ describe("checkinResultPresentation", () => {
 });
 
 describe("canShowWalkInQrForPhoto", () => {
-  it("allows QR photo only after walk-in entry is approved", () => {
+  it("keeps approved walk-in QR hidden from the appointment card after approval", () => {
     expect(
       canShowWalkInQrForPhoto({
         source: "walk-in",
@@ -457,7 +457,7 @@ describe("canShowWalkInQrForPhoto", () => {
         entryApprovedAt: "2026-09-01T02:10:00Z",
         completedAt: null,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("does not allow QR photo while still waiting for approval", () => {

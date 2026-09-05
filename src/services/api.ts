@@ -235,11 +235,9 @@ export function normalStatusLabel(status: NormalStatus): string {
 export function canShowWalkInQrForPhoto(
   a: Pick<TodayAppointment, "source" | "qrMode" | "checkedInAt" | "entryApprovalRequestedAt" | "entryApprovedAt" | "completedAt">,
 ): boolean {
-  return a.source === "walk-in" &&
-    a.qrMode !== "long-term" &&
-    !!a.checkedInAt &&
-    !!a.entryApprovedAt &&
-    !a.completedAt;
+  // QR สำหรับ walk-in ที่อนุมัติแล้วต้องแสดงผ่าน modal 30 วินาทีเท่านั้น ไม่ฝังไว้บน card
+  void a;
+  return false;
 }
 
 // เลือกเช็คเอาท์ในแอป: คง rider/แม่ค้าที่มาแล้วแบบเดิม + เพิ่ม QR ระยะยาวที่ "รอสแกนเสร็จสิ้น"
