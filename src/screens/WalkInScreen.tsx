@@ -43,14 +43,18 @@ import type {
   PdpaSignaturePoint,
   PdpaSignatureStroke,
 } from "../utils/pdpaConsent";
+import { useAppointmentStream } from "../utils/useAppointmentStream";
 import { confirmWalkInSubmit } from "../utils/walkInConfirm";
 import {
   WALK_IN_QR_MODAL_AUTO_CLOSE_MS,
   formatWalkInDepartmentTargetName,
   isOperationDepartment,
   shouldNotifyDepartmentRelatedEmployees,
+  walkInPendingApprovalFromResult,
   walkInDepartmentOptionsFromEmployees,
+  walkInQrModalFromApprovedStream,
   walkInQrModalFromResult,
+  type WalkInPendingApprovalState,
   type WalkInQrModalState,
 } from "../utils/walkInSubmitUi";
 
@@ -101,6 +105,7 @@ export default function WalkInScreen() {
     text: string;
   } | null>(null);
   const [qrModal, setQrModal] = useState<WalkInQrModalState | null>(null);
+  const [pendingApproval, setPendingApproval] = useState<WalkInPendingApprovalState | null>(null);
   const cameraRef = useRef<CameraView>(null);
   const qrAutoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const signatureBoxSizeRef = useRef(signatureBoxSize);
@@ -235,6 +240,27 @@ export default function WalkInScreen() {
       setQrModal(null);
     }, WALK_IN_QR_MODAL_AUTO_CLOSE_MS);
   }
+
+  useAppointmentStream((appointment) => {
+    const approvedQrModal = walkInQrModalFromApprovedStream(appointment, pendingApproval);
+    if (approvedQrModal) {
+      setPendingApproval(null);
+      setMessage({
+        type: "ok",
+        text: "อนุมัติแล้ว กรุณาให้ผู้มาติดต่อถ่ายรูป QR",
+      });
+      openQrModal(approvedQrModal);
+      return;
+    }
+
+    if (pendingApproval && appointment._id === pendingApproval.id && appointment.entryRejectedAt) {
+      const reason = String(appointment.entryRejectReason || "").trim();
+      const text = reason ? `ไม่อนุมัติให้เข้า: ${reason}` : "ไม่อนุมัติให้เข้า";
+      setPendingApproval(null);
+      setMessage({ type: "error", text });
+      Alert.alert("ไม่อนุมัติให้เข้า", reason || "ผู้ถูกติดต่อไม่อนุมัติรายการนี้");
+    }
+  });
 
   function resetForm() {
     setVisitorName("");
@@ -643,9 +669,18 @@ export default function WalkInScreen() {
         pdpaSignature,
         source: "mobile-walk-in",
       });
-      const nextQrModal = walkInQrModalFromResult(result, visitorName.trim());
+      const waitForApproval = hostRequired;
+      const nextQrModal = walkInQrModalFromResult(result, visitorName.trim(), {
+        waitForApproval,
+      });
+      const nextPendingApproval = walkInPendingApprovalFromResult(
+        result,
+        visitorName.trim(),
+        waitForApproval,
+      );
       rememberRecentCompanyName(normalizedCompanyName);
       resetForm();
+      setPendingApproval(nextPendingApproval);
       setMessage({
         type: "ok",
         text: hostRequired ? "บันทึกข้อมูลเรียบร้อย รออนุมัติ" : "บันทึกข้อมูลเรียบร้อย",

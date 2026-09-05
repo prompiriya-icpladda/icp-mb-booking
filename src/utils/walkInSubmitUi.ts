@@ -10,8 +10,24 @@ export type WalkInQrModalState = {
   visitorName: string;
 };
 
+export type WalkInPendingApprovalState = WalkInQrModalState;
+
+type WalkInQrModalOptions = {
+  waitForApproval?: boolean;
+};
+
+type WalkInApprovalStreamPayload = {
+  _id?: string | null;
+  entryApprovedAt?: string | null;
+  entryRejectedAt?: string | null;
+  completedAt?: string | null;
+};
+
 type WalkInDepartmentEmployee = {
+  employeeCode?: string | null;
+  name?: string | null;
   department?: string | null;
+  empType?: string | null;
 };
 
 function normalizeDepartment(value?: string | null): string {
@@ -63,11 +79,37 @@ export function shouldNotifyDepartmentRelatedEmployees({
 export function walkInQrModalFromResult(
   result: WalkInCreateResult,
   visitorName: string,
+  options: WalkInQrModalOptions = {},
 ): WalkInQrModalState | null {
+  if (options.waitForApproval) return null;
   const id = String(result.id ?? "").trim();
   if (!id) return null;
   return {
     id,
     visitorName: visitorName.trim() || "ผู้มาติดต่อ",
   };
+}
+
+export function walkInPendingApprovalFromResult(
+  result: WalkInCreateResult,
+  visitorName: string,
+  waitForApproval: boolean,
+): WalkInPendingApprovalState | null {
+  if (!waitForApproval) return null;
+  const id = String(result.id ?? "").trim();
+  if (!id) return null;
+  return {
+    id,
+    visitorName: visitorName.trim() || "ผู้มาติดต่อ",
+  };
+}
+
+export function walkInQrModalFromApprovedStream(
+  payload: WalkInApprovalStreamPayload,
+  pending: WalkInPendingApprovalState | null,
+): WalkInQrModalState | null {
+  if (!pending) return null;
+  if (String(payload._id ?? "") !== pending.id) return null;
+  if (!payload.entryApprovedAt || payload.entryRejectedAt || payload.completedAt) return null;
+  return pending;
 }

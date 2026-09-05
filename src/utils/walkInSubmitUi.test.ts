@@ -2,6 +2,8 @@ import {
   WALK_IN_QR_MODAL_AUTO_CLOSE_MS,
   formatWalkInDepartmentTargetName,
   shouldNotifyDepartmentRelatedEmployees,
+  walkInPendingApprovalFromResult,
+  walkInQrModalFromApprovedStream,
   walkInQrModalFromResult,
   walkInDepartmentOptionsFromEmployees,
 } from "./walkInSubmitUi";
@@ -12,6 +14,47 @@ describe("walk-in submit UI helpers", () => {
       id: "visit-1",
       visitorName: "สมชาย ใจดี",
     });
+  });
+
+  it("does not open a QR popup immediately when host approval is required", () => {
+    expect(
+      walkInQrModalFromResult(
+        { success: true, id: "visit-1" },
+        "สมชาย ใจดี",
+        { waitForApproval: true },
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps pending approval details so SSE approval can open QR later", () => {
+    expect(
+      walkInPendingApprovalFromResult(
+        { success: true, id: "visit-1" },
+        "สมชาย ใจดี",
+        true,
+      ),
+    ).toEqual({
+      id: "visit-1",
+      visitorName: "สมชาย ใจดี",
+    });
+  });
+
+  it("opens a QR popup for pending walk-in only after matching SSE approval", () => {
+    const pending = { id: "visit-1", visitorName: "สมชาย ใจดี" };
+
+    expect(
+      walkInQrModalFromApprovedStream(
+        { _id: "visit-1", entryApprovedAt: "2026-09-05T03:00:00.000Z" },
+        pending,
+      ),
+    ).toEqual(pending);
+    expect(
+      walkInQrModalFromApprovedStream(
+        { _id: "visit-2", entryApprovedAt: "2026-09-05T03:00:00.000Z" },
+        pending,
+      ),
+    ).toBeNull();
+    expect(walkInQrModalFromApprovedStream({ _id: "visit-1" }, pending)).toBeNull();
   });
 
   it("auto-closes the QR popup after 30 seconds", () => {
