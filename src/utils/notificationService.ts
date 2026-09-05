@@ -14,9 +14,65 @@ const DEVICE_ID_KEY = "mobile_push_device_id";
 const CHANNEL_ID = "appointments-v3";
 const EAS_PROJECT_ID = process.env.EXPO_PUBLIC_EAS_PROJECT_ID || "";
 
+const NOTIFICATION_DEDUPE_MS = 60 * 1000;
+const NATIVE_SOUND_THROTTLE_MS = 5 * 1000;
+const recentNotificationKeys = new Map<string, number>();
+let lastNativeSoundAt = 0;
+
+function shouldPlayNotificationSound(notification?: Notifications.Notification): boolean {
+  return notification?.request?.content?.data?.suppressSound !== true;
+}
+
+function notificationKey(opts: {
+  title: string;
+  body: string;
+  kind: NotificationKind;
+  appointmentId?: string;
+  tab?: NotificationHistoryEntry["tab"];
+}): string {
+  return [
+    opts.kind,
+    opts.appointmentId || "",
+    opts.tab || "",
+    opts.title,
+    opts.body,
+  ].join("\u001f");
+}
+
+function shouldSuppressDuplicateNotification(
+  opts: Parameters<typeof notificationKey>[0],
+  now = Date.now(),
+): boolean {
+  for (const [key, timestamp] of recentNotificationKeys) {
+    if (now - timestamp >= NOTIFICATION_DEDUPE_MS) {
+      recentNotificationKeys.delete(key);
+    }
+  }
+
+  const key = notificationKey(opts);
+  const previous = recentNotificationKeys.get(key);
+  if (previous !== undefined && now - previous < NOTIFICATION_DEDUPE_MS) {
+    return true;
+  }
+
+  recentNotificationKeys.set(key, now);
+  return false;
+}
+
+function shouldPlayNativeSound(now = Date.now()): boolean {
+  if (now - lastNativeSoundAt < NATIVE_SOUND_THROTTLE_MS) return false;
+  lastNativeSoundAt = now;
+  return true;
+}
+
+export function __resetNotificationDedupeForTests() {
+  recentNotificationKeys.clear();
+  lastNativeSoundAt = 0;
+}
+
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: true,
+  handleNotification: async (notification) => ({
+    shouldPlaySound: shouldPlayNotificationSound(notification),
     shouldSetBadge: true,
     shouldShowBanner: true,
     shouldShowList: true,
@@ -106,9 +162,14 @@ async function fireNotification(opts: {
   tab?: NotificationHistoryEntry["tab"];
 }) {
   const { title, body, kind, badge = 1, appointmentId, tab } = opts;
+  if (shouldSuppressDuplicateNotification({ title, body, kind, appointmentId, tab })) {
+    return;
+  }
+  const shouldPlaySound = Platform.OS !== "android" || shouldPlayNativeSound();
   const data = {
     ...(appointmentId ? { appointmentId } : {}),
     ...(tab ? { tab } : {}),
+    ...(!shouldPlaySound ? { suppressSound: true } : {}),
   };
   await setupAndroidChannel();
   const trigger = Platform.OS === "android" ? { channelId: CHANNEL_ID } : null;
@@ -116,13 +177,13 @@ async function fireNotification(opts: {
     content: {
       title,
       body,
-      sound: "default",
       badge,
       data,
+      ...(shouldPlaySound ? { sound: "default" } : {}),
     },
     trigger,
   });
-  if (Platform.OS === "android") {
+  if (Platform.OS === "android" && shouldPlaySound) {
     kioskModule.playNotificationSound().catch(() => {});
   }
   // บันทึกประวัติแบบ best-effort — push ต้องเด้งได้เสมอแม้ log fail
