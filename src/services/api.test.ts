@@ -1,4 +1,4 @@
-import { visitorTypeNeedsCompany, longTermStatus, normalStatus, normalStatusLabel, longTermStatusLabel, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, scannerPostCheckinAction, checkinResultPresentation, scanResultPrimaryAction, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames, canShowWalkInQrForPhoto, visitorAppointmentQrImageUrl } from "./api";
+import { visitorTypeNeedsCompany, longTermStatus, normalStatus, normalStatusLabel, longTermStatusLabel, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, scannerPostCheckinAction, checkinResultPresentation, scanResultPrimaryAction, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames, canShowWalkInQrForPhoto, visitorAppointmentQrImageUrl, checkinAppointment, checkoutAppointment } from "./api";
 
 describe("VISITOR_TYPE_OPTIONS", () => {
   it("does not offer rider for new walk-in registrations", () => {
@@ -101,6 +101,61 @@ describe("fetchRecentCompanyNames", () => {
     (global as any).fetch = fetchMock;
 
     await expect(fetchRecentCompanyNames()).resolves.toEqual(["บริษัท ข"]);
+  });
+});
+
+describe("scanner appointment device identity", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("posts scannerDeviceId with check-in scans", async () => {
+    const fetchMock = jest.fn(async () => ({ json: async () => ({ success: true }) }));
+    (global as any).fetch = fetchMock;
+
+    await checkinAppointment("visitor1", "scanner-a");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://app-plant.icpladda.com/ICPBooking/api/visitor-appointments/visitor1/checkin",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scannerDeviceId: "scanner-a" }),
+      },
+    );
+  });
+
+  it("posts scannerDeviceId with checkout scans", async () => {
+    const fetchMock = jest.fn(async () => ({ ok: true, text: async () => JSON.stringify({ success: true }) }));
+    (global as any).fetch = fetchMock;
+
+    await checkoutAppointment("visitor1", "scanner-a");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://app-plant.icpladda.com/ICPBooking/api/visitor-appointments/visitor1/checkout",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scannerDeviceId: "scanner-a" }),
+      },
+    );
+  });
+
+  it("passes scannerDeviceId when mobile creates a walk-in", async () => {
+    const fetchMock = jest.fn(async () => ({ ok: true, text: async () => JSON.stringify({ id: "walk-in-1" }) }));
+    (global as any).fetch = fetchMock;
+
+    await createWalkInVisit({
+      visitorName: "สมชาย",
+      hostEmployeeCode: "1001",
+      hostName: "Host",
+      companyName: "บริษัท ก",
+      scannerDeviceId: "scanner-a",
+      source: "mobile-walk-in",
+    } as any);
+
+    const init = (fetchMock.mock.calls[0] as any[])[1];
+    expect(JSON.parse(init.body)).toEqual(expect.objectContaining({ scannerDeviceId: "scanner-a" }));
   });
 });
 

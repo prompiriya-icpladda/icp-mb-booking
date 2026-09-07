@@ -75,10 +75,18 @@ export async function loginEmployee(
   return res.json();
 }
 
-export async function checkinAppointment(id: string): Promise<CheckinResult> {
+function scannerDeviceBody(scannerDeviceId?: string) {
+  const normalizedScannerDeviceId = String(scannerDeviceId || "").trim();
+  return normalizedScannerDeviceId
+    ? { body: JSON.stringify({ scannerDeviceId: normalizedScannerDeviceId }) }
+    : {};
+}
+
+export async function checkinAppointment(id: string, scannerDeviceId?: string): Promise<CheckinResult> {
   const res = await fetch(`${API_URL}/visitor-appointments/${id}/checkin`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    ...scannerDeviceBody(scannerDeviceId),
   });
   return res.json();
 }
@@ -136,10 +144,11 @@ export function scanResultPrimaryAction(
 }
 
 // สแกนออก — ทำเครื่องหมายว่าแม่ค้า/รายการเดิม "ไปแล้ว" (รองรับเฉพาะกลุ่มไม่มี host ฝั่ง backend)
-export async function checkoutAppointment(id: string): Promise<CheckoutResult> {
+export async function checkoutAppointment(id: string, scannerDeviceId?: string): Promise<CheckoutResult> {
   const res = await fetch(`${API_URL}/visitor-appointments/${id}/checkout`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    ...scannerDeviceBody(scannerDeviceId),
   });
   return parseJsonResponse<CheckoutResult>(res);
 }
@@ -572,6 +581,7 @@ export interface CreateWalkInVisitPayload {
   licensePlate?: string;
   licensePlates?: string[];
   includeDepartmentRelatedEmployees?: boolean;
+  scannerDeviceId?: string;
   pdpaConsentAccepted?: boolean;
   pdpaConsentedAt?: string;
   pdpaConsentVersion?: string;

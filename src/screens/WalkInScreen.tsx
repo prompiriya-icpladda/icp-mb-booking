@@ -31,6 +31,7 @@ import {
   visitorAppointmentQrImageUrl,
 } from "../services/api";
 import { readThaiIdCardName } from "../services/thaiIdCard";
+import { getScannerDeviceId } from "../utils/scannerDeviceIdentity";
 import {
   buildPdpaSignaturePayload,
   hasPdpaSignature,
@@ -642,6 +643,7 @@ export default function WalkInScreen() {
       const hostUserId = host
         ? host.userId ?? host.employeeId ?? host.employeeCode
         : "";
+      const scannerDeviceId = await getScannerDeviceId();
       const result = await createWalkInVisit({
         visitorName: visitorName.trim(),
         targetDepartment: normalizedDepartmentTarget || undefined,
@@ -667,6 +669,7 @@ export default function WalkInScreen() {
         pdpaConsentedAt,
         pdpaConsentVersion: PDPA_CONSENT_VERSION,
         pdpaSignature,
+        scannerDeviceId,
         source: "mobile-walk-in",
       });
       const waitForApproval = hostRequired;

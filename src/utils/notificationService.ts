@@ -7,10 +7,10 @@ import { getTodayAppointments, registerMobilePushToken, TodayAppointment } from 
 import { kioskModule } from "./kioskModule";
 import { addHistoryEntry } from "./notificationHistory";
 import type { NotificationKind, NotificationHistoryEntry } from "./notificationHistory.logic";
+import { getScannerDeviceId } from "./scannerDeviceIdentity";
 
 export const BACKGROUND_TASK = "check-today-appointments";
 const SEEN_KEY = "notified_appointment_ids";
-const DEVICE_ID_KEY = "mobile_push_device_id";
 const CHANNEL_ID = "appointments-v3";
 const EAS_PROJECT_ID = process.env.EXPO_PUBLIC_EAS_PROJECT_ID || "";
 
@@ -122,14 +122,6 @@ export async function requestPermissions(): Promise<boolean> {
   return status === "granted";
 }
 
-async function getDeviceId(): Promise<string> {
-  const existing = await SecureStore.getItemAsync(DEVICE_ID_KEY);
-  if (existing) return existing;
-  const created = `ap-scanner-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  await SecureStore.setItemAsync(DEVICE_ID_KEY, created);
-  return created;
-}
-
 export async function registerRemotePushToken(): Promise<string | null> {
   if (Platform.OS !== "android" && Platform.OS !== "ios") return null;
   const { status } = await Notifications.getPermissionsAsync();
@@ -143,7 +135,7 @@ export async function registerRemotePushToken(): Promise<string | null> {
     if (!token) return null;
     await registerMobilePushToken({
       token,
-      deviceId: await getDeviceId(),
+      deviceId: await getScannerDeviceId(),
       platform: Platform.OS,
     });
     return token;
@@ -158,7 +150,7 @@ export async function registerScannerDevice(): Promise<boolean> {
 
   try {
     await registerMobilePushToken({
-      deviceId: await getDeviceId(),
+      deviceId: await getScannerDeviceId(),
       platform: Platform.OS,
     });
     return true;

@@ -16,6 +16,7 @@ import {
   scanResultPrimaryAction,
   scannerPostCheckinAction,
 } from "../services/api";
+import { getScannerDeviceId } from "../utils/scannerDeviceIdentity";
 import { scanResultDateText } from "../utils/visitorAppointmentDisplay";
 
 type ScanState = "scanning" | "loading" | "result";
@@ -57,9 +58,10 @@ export default function ScannerScreen({
     processingRef.current = true;
     setScanState("loading");
     try {
-      const res = await checkinAppointment(id);
+      const scannerDeviceId = await getScannerDeviceId();
+      const res = await checkinAppointment(id, scannerDeviceId);
       if (scannerPostCheckinAction(res) === "checkout") {
-        const checkout = await checkoutAppointment(id);
+        const checkout = await checkoutAppointment(id, scannerDeviceId);
         if (checkout.success) {
           setResult({
             icon: "✅",
