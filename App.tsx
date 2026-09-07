@@ -48,6 +48,7 @@ import {
   type AppScreen,
   type MainTab,
 } from "./src/utils/mainNav";
+import { startDataWedgeScanner } from "./src/services/dataWedgeScanner";
 
 function TabBar({
   active,
@@ -91,6 +92,7 @@ function MainApp() {
   const [activeTab, setActiveTab] = useState<AppScreen>("notification");
   const [checkoutTargetId, setCheckoutTargetId] = useState<string | null>(null);
   const [notificationTarget, setNotificationTarget] = useState<AppointmentNotificationTarget | null>(null);
+  const [hardwareScanData, setHardwareScanData] = useState<string | null>(null);
   const [unread, setUnread] = useState(0);
   useEffect(() => {
     const refresh = () => setUnread(getUnreadCount());
@@ -110,6 +112,30 @@ function MainApp() {
     handleNotificationResponse(Notifications.getLastNotificationResponse?.() ?? null);
     const subscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
     return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let subscription: { remove: () => void } | null = null;
+
+    startDataWedgeScanner((data) => {
+      if (!active) return;
+      setHardwareScanData(data);
+      setActiveTab("scanner");
+    })
+      .then((nextSubscription) => {
+        if (active) {
+          subscription = nextSubscription;
+        } else {
+          nextSubscription.remove();
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+      subscription?.remove();
+    };
   }, []);
 
   function handleScanRequest() {
@@ -147,6 +173,8 @@ function MainApp() {
             onBack={handleBackToNotification}
             onCheckout={handleGoCheckout}
             onDone={handleBackToNotification}
+            hardwareScanData={hardwareScanData}
+            onHardwareScanConsumed={() => setHardwareScanData(null)}
           />
         ) : (
           <WalkInScreen />

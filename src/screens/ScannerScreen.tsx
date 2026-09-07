@@ -1,5 +1,5 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
-import React, { useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -32,10 +32,14 @@ interface ResultDisplay {
 export default function ScannerScreen({
   onBack,
   onDone,
+  hardwareScanData,
+  onHardwareScanConsumed,
 }: {
   onBack?: () => void;
   onCheckout?: (appointmentId: string) => void;
   onDone?: () => void;
+  hardwareScanData?: string | null;
+  onHardwareScanConsumed?: () => void;
 }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanState, setScanState] = useState<ScanState>("scanning");
@@ -43,13 +47,13 @@ export default function ScannerScreen({
   const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
   const processingRef = useRef(false);
 
-  function extractAppointmentId(data: string): string | null {
+  const extractAppointmentId = useCallback((data: string): string | null => {
     if (data.startsWith("apt:")) return data.slice(4);
     const match = data.match(/\/visitor-appointments\/([^/]+)\/checkin/);
     return match ? match[1] : null;
-  }
+  }, []);
 
-  async function handleBarcodeScan({ data }: { data: string }) {
+  const handleScanData = useCallback(async (data: string) => {
     if (processingRef.current || scanState !== "scanning") return;
 
     const id = extractAppointmentId(data);
@@ -108,7 +112,17 @@ export default function ScannerScreen({
       });
     }
     setScanState("result");
+  }, [extractAppointmentId, scanState]);
+
+  function handleBarcodeScan({ data }: { data: string }) {
+    void handleScanData(data);
   }
+
+  useEffect(() => {
+    if (!hardwareScanData) return;
+    void handleScanData(hardwareScanData);
+    onHardwareScanConsumed?.();
+  }, [handleScanData, hardwareScanData, onHardwareScanConsumed]);
 
   function resetScan() {
     processingRef.current = false;
