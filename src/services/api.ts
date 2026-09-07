@@ -14,7 +14,7 @@ export interface LoginResult {
 console.log("HR_API_URL =", HR_API_URL);
 
 export interface MobilePushRegistration {
-  token: string;
+  token?: string;
   deviceId: string;
   platform: "android" | "ios" | "unknown";
 }

@@ -18,6 +18,7 @@ import { AppText as Text } from "./src/theme/typography";
 import {
   registerBackgroundTask,
   registerRemotePushToken,
+  registerScannerDevice,
   requestPermissions,
   startForegroundPolling,
   stopForegroundPolling,
@@ -287,11 +288,11 @@ export default function App() {
   }
 
   useEffect(() => {
-    requestPermissions()
-      .then((granted) => {
-        if (granted) registerRemotePushToken();
-      })
-      .catch(() => {});
+    (async () => {
+      await registerScannerDevice();
+      const granted = await requestPermissions();
+      if (granted) await registerRemotePushToken();
+    })().catch(() => {});
     registerBackgroundTask();
     startForegroundPolling();
     startAppUpdateChecks();

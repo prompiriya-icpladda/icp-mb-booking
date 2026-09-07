@@ -541,6 +541,28 @@ describe("registerMobilePushToken", () => {
       },
     );
   });
+
+  it("posts scanner device registration without Expo token", async () => {
+    const fetchMock = jest.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }));
+    (global as any).fetch = fetchMock;
+
+    await registerMobilePushToken({
+      deviceId: "kiosk-1",
+      platform: "android",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://app-plant.icpladda.com/ICPBooking/api/mobile-push/register",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId: "kiosk-1",
+          platform: "android",
+        }),
+      },
+    );
+  });
 });
 
 describe("createWalkInVisit", () => {

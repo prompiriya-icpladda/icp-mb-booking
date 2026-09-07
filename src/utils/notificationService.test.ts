@@ -48,9 +48,11 @@ jest.mock("./kioskModule", () => ({
 }));
 
 import * as Notifications from "expo-notifications";
+import * as SecureStore from "expo-secure-store";
+import { registerMobilePushToken } from "../services/api";
 import { addHistoryEntry } from "./notificationHistory";
 import { kioskModule } from "./kioskModule";
-import { __resetNotificationDedupeForTests, notifyNow } from "./notificationService";
+import { __resetNotificationDedupeForTests, notifyNow, registerScannerDevice } from "./notificationService";
 
 describe("notificationService", () => {
   beforeEach(() => {
@@ -74,6 +76,18 @@ describe("notificationService", () => {
       }),
     );
     expect(request.content).not.toHaveProperty("channelId");
+  });
+
+  it("registers scanner device identity without requesting an Expo token", async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce("kiosk-1");
+
+    await registerScannerDevice();
+
+    expect(registerMobilePushToken).toHaveBeenCalledWith({
+      deviceId: "kiosk-1",
+      platform: "android",
+    });
+    expect(Notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
   });
 
   it("plays a native notification sound on Android kiosk because lock task can suppress notification effects", async () => {

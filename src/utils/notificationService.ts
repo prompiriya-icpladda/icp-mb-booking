@@ -153,6 +153,21 @@ export async function registerRemotePushToken(): Promise<string | null> {
   }
 }
 
+export async function registerScannerDevice(): Promise<boolean> {
+  if (Platform.OS !== "android" && Platform.OS !== "ios") return false;
+
+  try {
+    await registerMobilePushToken({
+      deviceId: await getDeviceId(),
+      platform: Platform.OS,
+    });
+    return true;
+  } catch (err) {
+    console.log("Scanner device registration failed:", err);
+    return false;
+  }
+}
+
 async function fireNotification(opts: {
   title: string;
   body: string;
