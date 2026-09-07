@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Modal,
   RefreshControl,
   StyleSheet,
@@ -12,7 +11,6 @@ import {
 } from "react-native";
 import { AppText as Text } from "../theme/typography";
 import {
-  canShowWalkInQrForPhoto,
   checkoutAppointment,
   getActiveLongTermAppointments,
   isLongTermCheckoutable,
@@ -26,7 +24,6 @@ import {
   NormalStatus,
   sortAppointmentsByLatest,
   TodayAppointment,
-  visitorAppointmentQrImageUrl,
 } from "../services/api";
 import { checkAndNotify, notifyNow } from "../utils/notificationService";
 import { appointmentStreamNotificationCopy } from "../utils/appointmentStreamNotification";
@@ -456,11 +453,9 @@ function AppointmentCard({
   const checkedIn = !!item.checkedInAt;
   const ltStatus = longTermStatus(item);
   const nmStatus = normalStatus(item);
-  const showWalkInQr = canShowWalkInQrForPhoto(item);
-  const walkInQrUri = showWalkInQr ? visitorAppointmentQrImageUrl(item._id) : "";
 
-  // long-term: แตะเพื่อดูรายละเอียดเมื่อเช็คเอาท์ได้; walk-in ที่อนุญาตแล้ว: เปิดรายละเอียดเพื่อเช็คเอาท์
-  const wantsDetail = (isLongTerm && longTermCardAction(item, selectMode) === "detail") || showWalkInQr;
+  // long-term: แตะเพื่อดูรายละเอียดเมื่อเช็คเอาท์ได้; QR walk-in แสดงผ่าน modal 30 วิเท่านั้น
+  const wantsDetail = isLongTerm && longTermCardAction(item, selectMode) === "detail";
 
   // โหมดเลือก: แตะเพื่อเลือก; rider/แม่ค้าที่มาแล้วหรือรอสแกนเสร็จสิ้น: เปิดรายละเอียด; อื่นๆ: สแกน
   const tappable = selectMode
@@ -520,23 +515,12 @@ function AppointmentCard({
         {item.visitorCount > 1 && <Pill icon="👥" text={`${item.visitorCount} คน`} />}
         {item.hasVehicle && item.licensePlate ? <Pill icon="🚗" text={item.licensePlate} /> : null}
       </View>
-      {showWalkInQr && (
-        <View style={styles.walkInQrBox}>
-          <Text style={styles.walkInQrTitle}>ให้ผู้เข้ามาถ่ายรูป QR code</Text>
-          <Image
-            source={{ uri: walkInQrUri }}
-            style={styles.walkInQrImage}
-            accessibilityLabel="QR code สำหรับสแกนก่อนกลับ"
-          />
-          <Text style={styles.walkInQrCaption}>ใช้สแกนที่ AP scanner ก่อนกลับ</Text>
-        </View>
-      )}
       <View style={styles.cardFooter}>
         <Text style={styles.createdBy}>มาพบ: {item.createdByName}</Text>
         {!selectMode && tappable && (
           <View style={styles.scanHint}>
             <Text style={styles.scanHintText}>
-              {wantsDetail ? (showWalkInQr ? "› ดูรายละเอียด / เช็คเอาท์" : "› ดูรายละเอียด") : "📷 แตะเพื่อสแกน"}
+              {wantsDetail ? "› ดูรายละเอียด" : "📷 แตะเพื่อสแกน"}
             </Text>
           </View>
         )}
@@ -768,18 +752,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   scanHintText: { fontSize: 11, color: "#16a34a", fontWeight: "600" },
-  walkInQrBox: {
-    alignItems: "center",
-    backgroundColor: "#eff6ff",
-    borderColor: "#bfdbfe",
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 10,
-    padding: 12,
-  },
-  walkInQrTitle: { color: "#1d4ed8", fontSize: 13, fontWeight: "700", marginBottom: 8 },
-  walkInQrImage: { width: 180, height: 180, backgroundColor: "#fff", borderRadius: 8 },
-  walkInQrCaption: { color: "#1e40af", fontSize: 12, marginTop: 8, textAlign: "center" },
   selectBar: {
     flexDirection: "row",
     alignItems: "center",
