@@ -2,7 +2,7 @@
     "expo": {
         "name": "AP Scanner",
         "slug": "ap-scanner",
-        "version": "1.0.19",
+        "version": "1.0.21",
         "orientation": "portrait",
         "icon": "./assets/icpladda-logo.png",
         "userInterfaceStyle": "light",
@@ -19,7 +19,7 @@
                 "foregroundImage": "./assets/icpladda-logo.png",
                 "backgroundColor": "#ffffff"
             },
-            "versionCode": 20,
+            "versionCode": 22,
             "predictiveBackGestureEnabled": false,
             "package": "com.icpladda.apscanner"
         },
