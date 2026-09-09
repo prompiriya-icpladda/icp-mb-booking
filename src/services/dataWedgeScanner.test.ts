@@ -33,6 +33,27 @@ describe("dataWedgeScanner", () => {
     expect(configureProfile).toHaveBeenCalledTimes(1);
   });
 
+  it("retries DataWedge profile config because DataWedge may not be ready at kiosk boot", async () => {
+    jest.useFakeTimers();
+    const configureProfile = jest
+      .fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    const { module } = loadWithNativeModule({ configureProfile });
+
+    const result = module.configureDataWedgeScanner();
+
+    await Promise.resolve();
+    expect(configureProfile).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(500);
+    expect(configureProfile).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(1000);
+    await expect(result).resolves.toBe(true);
+    expect(configureProfile).toHaveBeenCalledTimes(3);
+    jest.useRealTimers();
+  });
+
   it("emits trimmed hardware scan data from DataWedge broadcast", () => {
     const { module, addListener, emit } = loadWithNativeModule({ configureProfile: jest.fn() });
     const handler = jest.fn();

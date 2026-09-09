@@ -8,7 +8,7 @@ import {
 import * as Notifications from "expo-notifications";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, AppState, StyleSheet, TouchableOpacity, View } from "react-native";
 import { KioskAdminPasswordModal } from "./src/components/KioskAdminPasswordModal";
 import KioskGuard from "./src/components/KioskGuard";
 import NotificationScreen from "./src/screens/NotificationScreen";
@@ -48,7 +48,7 @@ import {
   type AppScreen,
   type MainTab,
 } from "./src/utils/mainNav";
-import { startDataWedgeScanner } from "./src/services/dataWedgeScanner";
+import { configureDataWedgeScanner, startDataWedgeScanner } from "./src/services/dataWedgeScanner";
 
 function TabBar({
   active,
@@ -137,6 +137,21 @@ function MainApp() {
       subscription?.remove();
     };
   }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        configureDataWedgeScanner().catch(() => undefined);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "scanner") {
+      configureDataWedgeScanner().catch(() => undefined);
+    }
+  }, [activeTab]);
 
   function handleScanRequest() {
     setActiveTab("scanner");

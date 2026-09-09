@@ -10,6 +10,12 @@ type DataWedgeScanEvent = {
   data?: string;
 };
 
+const CONFIG_RETRY_DELAYS_MS = [0, 500, 1000, 2000, 4000];
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function nativeModule(): DataWedgeNativeModule | undefined {
   return Platform.OS === "android"
     ? NativeModules.DataWedgeModule as DataWedgeNativeModule | undefined
@@ -19,7 +25,14 @@ function nativeModule(): DataWedgeNativeModule | undefined {
 export async function configureDataWedgeScanner(): Promise<boolean> {
   const module = nativeModule();
   if (!module?.configureProfile) return false;
-  return module.configureProfile();
+  for (let attempt = 0; attempt < CONFIG_RETRY_DELAYS_MS.length; attempt += 1) {
+    const waitMs = CONFIG_RETRY_DELAYS_MS[attempt];
+    if (waitMs > 0) await delay(waitMs);
+    try {
+      if (await module.configureProfile()) return true;
+    } catch {}
+  }
+  return false;
 }
 
 export function addDataWedgeScanListener(handler: (data: string) => void): { remove: () => void } {
