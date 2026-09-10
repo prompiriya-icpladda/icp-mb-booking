@@ -14,7 +14,7 @@ import {
   checkoutAppointment,
   getActiveLongTermAppointments,
   isLongTermCheckoutable,
-  isLongTermOnSite,
+  isLongTermListVisible,
   longTermCardAction,
   longTermStatusLabel,
   longTermStatus,
@@ -91,10 +91,10 @@ export default function NotificationScreen({
       setError("ไม่สามารถโหลดข้อมูลได้");
     }
     // ระยะยาว — best effort: ถ้าโหลดไม่ได้ คงลิสต์เดิมไว้ ไม่ให้กระทบแท็บปกติ
-    // โชว์เฉพาะ "มาแล้ว" (คนที่อยู่ในพื้นที่) — ซ่อน "ลงทะเบียน" และ "เช็คเอาท์"
+    // server คืนเฉพาะใบที่ยังไม่หมดอายุ; ไม่ซ่อน "เช็คเอาท์" เพราะ QR ยังสแกนรอบใหม่ได้
     try {
       const longTerm = await getActiveLongTermAppointments();
-      setLongTermAppointments(longTerm.filter(isLongTermOnSite));
+      setLongTermAppointments(longTerm.filter(isLongTermListVisible));
     } catch {
       // เงียบไว้
     }

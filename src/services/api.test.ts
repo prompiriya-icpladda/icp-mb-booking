@@ -1,4 +1,4 @@
-import { visitorTypeNeedsCompany, longTermStatus, normalStatus, normalStatusLabel, longTermStatusLabel, isLongTermCheckoutable, isLongTermOnSite, longTermCardAction, shouldRouteToCheckout, scannerPostCheckinAction, checkinResultPresentation, scanResultPrimaryAction, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames, canShowWalkInQrForPhoto, visitorAppointmentQrImageUrl, checkinAppointment, checkoutAppointment } from "./api";
+import { visitorTypeNeedsCompany, longTermStatus, normalStatus, normalStatusLabel, longTermStatusLabel, isLongTermCheckoutable, isLongTermListVisible, longTermCardAction, shouldRouteToCheckout, scannerPostCheckinAction, checkinResultPresentation, scanResultPrimaryAction, appointmentTimeMinutes, sortAppointmentsByLatest, VISITOR_TYPE_OPTIONS, registerMobilePushToken, createWalkInVisit, searchHrEmployees, fetchRecentCompanyNames, canShowWalkInQrForPhoto, visitorAppointmentQrImageUrl, checkinAppointment, checkoutAppointment } from "./api";
 
 describe("VISITOR_TYPE_OPTIONS", () => {
   it("does not offer rider for new walk-in registrations", () => {
@@ -297,13 +297,13 @@ describe("isLongTermCheckoutable", () => {
   });
 });
 
-describe("isLongTermOnSite", () => {
+describe("isLongTermListVisible", () => {
   it("shows an arrived visitor (checked in, not checked out)", () => {
-    expect(isLongTermOnSite({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: null })).toBe(true);
+    expect(isLongTermListVisible({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: null })).toBe(true);
   });
   it("keeps a completion-requested visitor visible for scan-out", () => {
     expect(
-      isLongTermOnSite({
+      isLongTermListVisible({
         checkedInAt: "2026-06-30T01:00:00Z",
         completionRequestedAt: "2026-06-30T04:00:00Z",
         completedAt: null,
@@ -311,15 +311,15 @@ describe("isLongTermOnSite", () => {
     ).toBe(true);
   });
   it("shows a registered visitor waiting to check in", () => {
-    expect(isLongTermOnSite({ checkedInAt: null, completedAt: null })).toBe(true);
+    expect(isLongTermListVisible({ checkedInAt: null, completedAt: null })).toBe(true);
   });
-  it("hides a checked-out visitor (already left)", () => {
+  it("keeps a checked-out visitor visible because the QR is still reusable", () => {
     expect(
-      isLongTermOnSite({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: "2026-06-30T05:00:00Z" }),
-    ).toBe(false);
+      isLongTermListVisible({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: "2026-06-30T05:00:00Z" }),
+    ).toBe(true);
   });
   it("treats a missing completedAt with a check-in as on-site", () => {
-    expect(isLongTermOnSite({ checkedInAt: "2026-06-30T01:00:00Z" })).toBe(true);
+    expect(isLongTermListVisible({ checkedInAt: "2026-06-30T01:00:00Z" })).toBe(true);
   });
 });
 

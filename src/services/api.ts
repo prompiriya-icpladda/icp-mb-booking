@@ -258,13 +258,12 @@ export function isLongTermCheckoutable(
   return (a.visitorType === "rider" || a.visitorType === "merchant") && status === "arrived";
 }
 
-// แท็บ "ระยะยาว" โชว์คนที่ลงทะเบียนแล้วยังใช้ QR ได้ รวมถึงยังไม่เช็คอิน
-// ซ่อนเฉพาะ "เช็คเอาท์" (ไปแล้ว)
-export function isLongTermOnSite(
+// แท็บ "ระยะยาว" โชว์ทุกใบที่ server คืนมา เพราะผ่านเงื่อนไขยังไม่หมดอายุแล้ว
+// completedAt เป็นแค่สถานะ "เช็คเอาท์" แต่ QR ระยะยาวยังสแกนรอบใหม่ได้
+export function isLongTermListVisible(
   a: Pick<TodayAppointment, "checkedInAt" | "completionRequestedAt" | "completedAt">,
 ): boolean {
-  const status = longTermStatus(a);
-  return status !== "checked-out";
+  return !!a;
 }
 
 export type LongTermCardAction = "detail" | "scan" | "select";
