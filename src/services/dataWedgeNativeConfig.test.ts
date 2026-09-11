@@ -26,14 +26,19 @@ describe("DataWedge native profile config", () => {
     );
   });
 
-  it("uses broadcast intent delivery and switches to the app scanner profile", () => {
+  it("configures the launcher profile used by the kiosk home activity", () => {
     const source = dataWedgeModuleSource();
 
+    expect(source).toContain('private const val PROFILE_NAME = "Launcher"');
+    expect(source).toContain('val resultListSuccess = !resultList.isNullOrEmpty()');
     expect(source).toContain('putString("CONFIG_MODE", "CREATE_IF_NOT_EXIST")');
+    expect(source).toContain('putParcelableArrayList("PLUGIN_CONFIG", arrayListOf(barcodePlugin(), keystrokePlugin(), intentPlugin()))');
+    expect(source).not.toContain('APP_LIST');
+    expect(source).not.toContain('SWITCH_TO_PROFILE');
     expect(source).not.toContain('putString("CONFIG_MODE", "UPDATE")');
-    expect(source).toContain('private const val SWITCH_TO_PROFILE = "com.symbol.datawedge.api.SWITCH_TO_PROFILE"');
-    expect(source).toContain("sendDataWedgeIntent(SWITCH_TO_PROFILE, PROFILE_NAME, SWITCH_TO_PROFILE_COMMAND_ID)");
     expect(source).toContain('putInt("intent_delivery", 2)');
+    expect(source).toContain('putString("intent_category", Intent.CATEGORY_DEFAULT)');
+    expect(source).toContain('addCategory(Intent.CATEGORY_DEFAULT)');
     expect(source).not.toContain('putString("intent_delivery", "2")');
   });
 });
