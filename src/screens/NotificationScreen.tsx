@@ -598,6 +598,7 @@ function longTermLabel(s: LongTermStatus) {
 
 function longTermBadgeStyle(s: LongTermStatus) {
   if (s === "registered") return styles.statusPending;
+  if (s === "not-checked-in") return styles.statusPending;
   if (s === "approval-requested") return styles.statusApproval;
   if (s === "rejected") return styles.statusRejected;
   if (s === "arrived") return styles.statusChecked;
@@ -629,6 +630,7 @@ function normalTextStyle(s: NormalStatus) {
 
 function longTermTextStyle(s: LongTermStatus) {
   if (s === "registered") return styles.statusPendingText;
+  if (s === "not-checked-in") return styles.statusPendingText;
   if (s === "approval-requested") return styles.statusApprovalText;
   if (s === "rejected") return styles.statusRejectedText;
   if (s === "arrived") return styles.statusCheckedText;

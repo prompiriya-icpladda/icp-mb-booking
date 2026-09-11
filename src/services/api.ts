@@ -178,17 +178,38 @@ export interface TodayAppointment {
   visitorType?: VisitorType;
 }
 
-export type LongTermStatus = "registered" | "approval-requested" | "rejected" | "arrived" | "completion-requested" | "checked-out";
+export type LongTermStatus = "registered" | "not-checked-in" | "approval-requested" | "rejected" | "arrived" | "completion-requested" | "checked-out";
 
-// อนุมานสถานะ long-term จาก timestamp ที่ server คืนมา (completedAt ชนะ checkedInAt)
+const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+function bangkokDate(value: string | number | Date | null | undefined): string {
+  if (value == null || value === "") return "";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const time = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  if (!Number.isFinite(time)) return "";
+  return new Date(time + BANGKOK_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+function isBangkokDate(value: string | number | Date | null | undefined, date: string): boolean {
+  return !!date && bangkokDate(value) === date;
+}
+
+// อนุมานสถานะ long-term จาก timestamp ที่ server คืนมา โดยมองวันตามเวลาไทย
 export function longTermStatus(
-  a: Pick<TodayAppointment, "checkedInAt" | "entryApprovalRequestedAt" | "entryApprovedAt" | "entryRejectedAt" | "completionRequestedAt" | "completedAt">,
+  a: Pick<TodayAppointment, "checkedInAt" | "entryApprovalRequestedAt" | "entryApprovedAt" | "entryRejectedAt" | "completionRequestedAt" | "completedAt" | "createdAt">,
+  now: string | number | Date = Date.now(),
 ): LongTermStatus {
-  if (a.completedAt) return "checked-out";
-  if (a.completionRequestedAt) return "completion-requested";
+  const today = bangkokDate(now);
+  const completedToday = isBangkokDate(a.completedAt, today);
+  const checkedInToday = isBangkokDate(a.checkedInAt, today);
+
   if (a.entryRejectedAt) return "rejected";
+  if (completedToday) return "checked-out";
+  if (!a.completedAt && a.completionRequestedAt) return "completion-requested";
   if (!a.checkedInAt && a.entryApprovalRequestedAt) return "approval-requested";
-  if (a.checkedInAt) return "arrived";
+  if (a.checkedInAt && (!a.completedAt || checkedInToday)) return "arrived";
+  if (a.completedAt) return "not-checked-in";
+  if (a.createdAt && !isBangkokDate(a.createdAt, today)) return "not-checked-in";
   return "registered";
 }
 
@@ -196,6 +217,8 @@ export function longTermStatusLabel(status: LongTermStatus): string {
   switch (status) {
     case "registered":
       return "ลงทะเบียน";
+    case "not-checked-in":
+      return "ยังไม่เช็คอิน";
     case "approval-requested":
       return "รออนุมัติ";
     case "rejected":

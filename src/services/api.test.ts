@@ -160,11 +160,22 @@ describe("scanner appointment device identity", () => {
 });
 
 describe("longTermStatus", () => {
-  it("returns 'registered' when never checked in", () => {
-    expect(longTermStatus({ checkedInAt: null, completedAt: null })).toBe("registered");
+  const today = new Date("2026-09-11T03:00:00.000Z");
+
+  it("returns 'registered' only on the Bangkok day the long-term QR was created", () => {
+    expect(
+      longTermStatus({ checkedInAt: null, completedAt: null, createdAt: "2026-09-11T02:00:00.000Z" }, today),
+    ).toBe("registered");
   });
+
+  it("returns 'not-checked-in' after the created day while the long-term QR is still valid", () => {
+    expect(
+      longTermStatus({ checkedInAt: null, completedAt: null, createdAt: "2026-09-10T02:00:00.000Z" }, today),
+    ).toBe("not-checked-in");
+  });
+
   it("returns 'arrived' when checked in but not completed", () => {
-    expect(longTermStatus({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: null })).toBe("arrived");
+    expect(longTermStatus({ checkedInAt: "2026-09-11T01:00:00Z", completedAt: null }, today)).toBe("arrived");
   });
   it("returns 'completion-requested' while waiting for AP scanner to scan out", () => {
     expect(
@@ -175,13 +186,24 @@ describe("longTermStatus", () => {
       }),
     ).toBe("completion-requested");
   });
-  it("returns 'checked-out' when completed (even if checkedInAt is set)", () => {
+  it("returns 'checked-out' when completed today (even if checkedInAt is set)", () => {
     expect(
-      longTermStatus({ checkedInAt: "2026-06-30T01:00:00Z", completedAt: "2026-06-30T05:00:00Z" }),
+      longTermStatus({ checkedInAt: "2026-09-11T01:00:00Z", completedAt: "2026-09-11T05:00:00Z" }, today),
     ).toBe("checked-out");
   });
+
+  it("returns 'not-checked-in' when completedAt is from a previous Bangkok day", () => {
+    expect(
+      longTermStatus({
+        checkedInAt: "2026-09-10T01:00:00Z",
+        completedAt: "2026-09-10T05:00:00Z",
+        createdAt: "2026-09-01T01:00:00Z",
+      }, today),
+    ).toBe("not-checked-in");
+  });
+
   it("treats a missing completedAt as not checked out", () => {
-    expect(longTermStatus({ checkedInAt: "2026-06-30T01:00:00Z" })).toBe("arrived");
+    expect(longTermStatus({ checkedInAt: "2026-09-11T01:00:00Z" }, today)).toBe("arrived");
   });
 });
 
@@ -411,6 +433,10 @@ describe("visitor appointment status labels", () => {
   it("shows walk-in approval requests as waiting for approval, not completed", () => {
     expect(normalStatusLabel("approval-requested")).toBe("รออนุมัติ");
     expect(longTermStatusLabel("approval-requested")).toBe("รออนุมัติ");
+  });
+
+  it("shows long-term follow-up days as not checked in", () => {
+    expect(longTermStatusLabel("not-checked-in")).toBe("ยังไม่เช็คอิน");
   });
 
   it("keeps completed and rejected labels explicit", () => {
