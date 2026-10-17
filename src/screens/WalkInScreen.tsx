@@ -1,5 +1,5 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -21,6 +21,7 @@ import {
 import {
   createWalkInVisit,
   fetchRecentCompanyNames,
+  getTodayAppointments,
   HrEmployee,
   ocrLicensePlate,
   searchHrEmployees,
@@ -44,7 +45,6 @@ import type {
   PdpaSignaturePoint,
   PdpaSignatureStroke,
 } from "../utils/pdpaConsent";
-import { useAppointmentStream } from "../utils/useAppointmentStream";
 import { confirmWalkInSubmit } from "../utils/walkInConfirm";
 import {
   WALK_IN_QR_MODAL_AUTO_CLOSE_MS,
@@ -53,7 +53,7 @@ import {
   shouldNotifyDepartmentRelatedEmployees,
   walkInPendingApprovalFromResult,
   walkInDepartmentOptionsFromEmployees,
-  walkInQrModalFromApprovedStream,
+  walkInQrModalFromApprovedAppointment,
   walkInQrModalFromResult,
   type WalkInPendingApprovalState,
   type WalkInQrModalState,
@@ -63,6 +63,7 @@ const MIN_VEHICLE_COUNT = 1;
 const SIGNATURE_POINT_MIN_DISTANCE = 2;
 const RECENT_COMPANY_LIMIT = 30;
 const COMPANY_SUGGESTION_LIMIT = 8;
+const PENDING_APPROVAL_POLL_MS = 3000;
 
 type PdpaStep = "consent" | "signature";
 
@@ -233,35 +234,62 @@ export default function WalkInScreen() {
     setQrModal(null);
   }
 
-  function openQrModal(nextModal: WalkInQrModalState) {
-    clearQrAutoCloseTimer();
+  const openQrModal = useCallback((nextModal: WalkInQrModalState) => {
+    if (qrAutoCloseTimerRef.current) clearTimeout(qrAutoCloseTimerRef.current);
     setQrModal(nextModal);
     qrAutoCloseTimerRef.current = setTimeout(() => {
       qrAutoCloseTimerRef.current = null;
       setQrModal(null);
     }, WALK_IN_QR_MODAL_AUTO_CLOSE_MS);
-  }
+  }, []);
 
-  useAppointmentStream((appointment) => {
-    const approvedQrModal = walkInQrModalFromApprovedStream(appointment, pendingApproval);
-    if (approvedQrModal) {
-      setPendingApproval(null);
-      setMessage({
-        type: "ok",
-        text: "อนุมัติแล้ว กรุณาให้ผู้มาติดต่อถ่ายรูป QR",
-      });
-      openQrModal(approvedQrModal);
-      return;
-    }
+  useEffect(() => {
+    if (!pendingApproval) return;
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
-    if (pendingApproval && appointment._id === pendingApproval.id && appointment.entryRejectedAt) {
-      const reason = String(appointment.entryRejectReason || "").trim();
-      const text = reason ? `ไม่อนุมัติให้เข้า: ${reason}` : "ไม่อนุมัติให้เข้า";
-      setPendingApproval(null);
-      setMessage({ type: "error", text });
-      Alert.alert("ไม่อนุมัติให้เข้า", reason || "ผู้ถูกติดต่อไม่อนุมัติรายการนี้");
-    }
-  });
+    const pollApproval = async () => {
+      try {
+        const appointments = await getTodayAppointments();
+        if (cancelled) return;
+        const appointment = appointments.find((item) => item._id === pendingApproval.id);
+        if (appointment) {
+          const approvedQrModal = walkInQrModalFromApprovedAppointment(
+            appointment,
+            pendingApproval,
+          );
+          if (approvedQrModal) {
+            cancelled = true;
+            setPendingApproval(null);
+            setMessage({
+              type: "ok",
+              text: "อนุมัติแล้ว กรุณาให้ผู้มาติดต่อถ่ายรูป QR",
+            });
+            openQrModal(approvedQrModal);
+            return;
+          }
+          if (appointment.entryRejectedAt) {
+            cancelled = true;
+            const reason = String(appointment.entryRejectReason || "").trim();
+            const text = reason ? `ไม่อนุมัติให้เข้า: ${reason}` : "ไม่อนุมัติให้เข้า";
+            setPendingApproval(null);
+            setMessage({ type: "error", text });
+            Alert.alert("ไม่อนุมัติให้เข้า", reason || "ผู้ถูกติดต่อไม่อนุมัติรายการนี้");
+            return;
+          }
+        }
+      } catch {
+        // ใช้รอบถัดไปแทน เพื่อไม่รบกวนผู้มาติดต่อเมื่อเครือข่ายสะดุดชั่วคราว
+      }
+      if (!cancelled) pollTimer = setTimeout(pollApproval, PENDING_APPROVAL_POLL_MS);
+    };
+
+    pollApproval();
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [openQrModal, pendingApproval]);
 
   function resetForm() {
     setVisitorName("");

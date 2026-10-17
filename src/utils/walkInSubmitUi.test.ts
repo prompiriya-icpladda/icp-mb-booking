@@ -3,7 +3,7 @@ import {
   formatWalkInDepartmentTargetName,
   shouldNotifyDepartmentRelatedEmployees,
   walkInPendingApprovalFromResult,
-  walkInQrModalFromApprovedStream,
+  walkInQrModalFromApprovedAppointment,
   walkInQrModalFromResult,
   walkInDepartmentOptionsFromEmployees,
 } from "./walkInSubmitUi";
@@ -43,18 +43,18 @@ describe("walk-in submit UI helpers", () => {
     const pending = { id: "visit-1", visitorName: "สมชาย ใจดี" };
 
     expect(
-      walkInQrModalFromApprovedStream(
+      walkInQrModalFromApprovedAppointment(
         { _id: "visit-1", entryApprovedAt: "2026-09-05T03:00:00.000Z" },
         pending,
       ),
     ).toEqual(pending);
     expect(
-      walkInQrModalFromApprovedStream(
+      walkInQrModalFromApprovedAppointment(
         { _id: "visit-2", entryApprovedAt: "2026-09-05T03:00:00.000Z" },
         pending,
       ),
     ).toBeNull();
-    expect(walkInQrModalFromApprovedStream({ _id: "visit-1" }, pending)).toBeNull();
+    expect(walkInQrModalFromApprovedAppointment({ _id: "visit-1" }, pending)).toBeNull();
   });
 
   it("auto-closes the QR popup after 30 seconds", () => {

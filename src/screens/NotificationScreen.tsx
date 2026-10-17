@@ -25,13 +25,8 @@ import {
   sortAppointmentsByLatest,
   TodayAppointment,
 } from "../services/api";
-import { checkAndNotify, notifyNow } from "../utils/notificationService";
-import { appointmentStreamNotificationCopy } from "../utils/appointmentStreamNotification";
-import {
-  appointmentNotificationTarget,
-  type AppointmentNotificationTarget,
-} from "../utils/appointmentNotificationTarget";
-import { useAppointmentStream } from "../utils/useAppointmentStream";
+import { checkAndNotify } from "../utils/notificationService";
+import type { AppointmentNotificationTarget } from "../utils/appointmentNotificationTarget";
 import LongTermDetailScreen from "./LongTermDetailScreen";
 import { clearHistory, getHistory, getUnreadCount, markAllRead, subscribe } from "../utils/notificationHistory";
 import { resolveHistoryFocus, type AppointmentListTab } from "../utils/notificationHistoryFocus";
@@ -119,16 +114,6 @@ export default function NotificationScreen({
     const unsub = subscribe(refresh);
     return unsub;
   }, []);
-
-  // รับแจ้งเตือนทันทีเมื่อมีการเปลี่ยนแปลงจาก server (SSE)
-  useAppointmentStream(useCallback((appointment) => {
-    const copy = appointmentStreamNotificationCopy(appointment, [
-      ...todayAppointments,
-      ...longTermAppointments,
-    ]);
-    notifyNow(copy.title, copy.body, appointmentNotificationTarget(appointment) ?? {}).catch(() => {});
-    fetchAppointments();
-  }, [fetchAppointments, todayAppointments, longTermAppointments]));
 
   useEffect(() => {
     exitSelectMode();

@@ -16,7 +16,7 @@ type WalkInQrModalOptions = {
   waitForApproval?: boolean;
 };
 
-type WalkInApprovalStreamPayload = {
+type WalkInApprovalPayload = {
   _id?: string | null;
   entryApprovedAt?: string | null;
   entryRejectedAt?: string | null;
@@ -104,8 +104,8 @@ export function walkInPendingApprovalFromResult(
   };
 }
 
-export function walkInQrModalFromApprovedStream(
-  payload: WalkInApprovalStreamPayload,
+export function walkInQrModalFromApprovedAppointment(
+  payload: WalkInApprovalPayload,
   pending: WalkInPendingApprovalState | null,
 ): WalkInQrModalState | null {
   if (!pending) return null;
